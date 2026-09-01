@@ -1,0 +1,32 @@
+{
+  "name": "adaptive-ai-billing-platform",
+  "version": "1.0.0",
+  "description": "Adaptive AI-Powered Multi-Tenant Billing Platform",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "dev:backend": "npm run dev --workspace=backend",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "seed": "npm run seed --workspace=backend",
+    "lint": "npm run lint --workspaces --if-present",
+    "tunnel:cloudflared": "npx cloudflared tunnel --url http://localhost:5173",
+    "tunnel:localtunnel": "npx localtunnel --port 5173"
+  },
+  "keywords": [
+    "billing",
+    "invoicing",
+    "multi-tenant",
+    "ai",
+    "mern",
+    "typescript"
+  ],
+  "author": "",
+  "license": "ISC"
+}
