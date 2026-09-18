@@ -370,18 +370,96 @@ h1, h2, h3, h4, h5, h6 {
   animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* Print Styles */
+/* Invoice Paper & Document Presentation */
+.invoice-paper {
+  background: #ffffff;
+  color: #0f172a;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  padding: 3rem;
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  box-sizing: border-box;
+  position: relative;
+  font-family: var(--font-sans);
+}
+
+.invoice-paper.template-classic {
+  font-family: 'Times New Roman', Times, serif;
+  border: 2px solid #334155;
+  padding: 2.5rem;
+}
+
+.invoice-paper.template-minimalist {
+  border: 1px solid #e2e8f0;
+  box-shadow: none;
+  padding: 2.5rem;
+}
+
+.invoice-paper.template-pos_thermal {
+  max-width: 420px;
+  padding: 1.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+}
+
+.invoice-paper.template-gst_master {
+  max-width: 960px;
+  padding: 2.5rem;
+}
+
+/* Print Isolation Styles */
 @media print {
-  body {
+  html, body {
     background: #ffffff !important;
     color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
   }
-  .no-print {
+
+  aside, nav, header, footer, .no-print, .action-bar, .ai-copilot-drawer, .helper-banner, button {
     display: none !important;
   }
-  .glass-panel {
+
+  /* Reset layout constraints during print */
+  div[style*="display: flex"], div[style*="grid"] {
+    display: block !important;
+  }
+
+  .invoice-paper {
     border: none !important;
     box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
     background: #ffffff !important;
+    color: #000000 !important;
+    page-break-inside: avoid;
+  }
+
+  .invoice-paper * {
+    color: #000000 !important;
+    box-shadow: none !important;
+  }
+
+  .invoice-paper .data-table th {
+    background: #f1f5f9 !important;
+    color: #000000 !important;
+    border-bottom: 1px solid #000000 !important;
+  }
+
+  .invoice-paper .data-table td {
+    border-bottom: 1px solid #e2e8f0 !important;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 1.5cm;
   }
 }
+

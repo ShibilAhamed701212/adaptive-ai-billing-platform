@@ -43,7 +43,7 @@ export async function listPayments(req: Request, res: Response, next: NextFuncti
 export async function recordPayment(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const orgId = req.tenant!.organizationId;
-    const { invoiceId, amount, paymentMethod, paymentDate, transactionReference, notes, customFields } = req.body;
+    const { invoiceId, amount, paymentMethod, paymentDate, transactionReference, notes, customFields, idempotencyKey } = req.body;
 
     if (!invoiceId || !amount || Number(amount) <= 0) {
       res.status(400).json({
@@ -51,6 +51,29 @@ export async function recordPayment(req: Request, res: Response, next: NextFunct
         error: { code: 'VALIDATION_ERROR', message: 'Invoice ID and valid positive amount are required' },
       });
       return;
+    }
+
+    if (idempotencyKey) {
+      const existingPayment = await PaymentModel.findOne({
+        organizationId: new mongoose.Types.ObjectId(orgId),
+        idempotencyKey,
+      });
+      if (existingPayment) {
+        const existingInvoice = await InvoiceModel.findById(existingPayment.invoiceId);
+        res.status(200).json({
+          success: true,
+          data: {
+            payment: existingPayment,
+            invoice: existingInvoice ? {
+              _id: existingInvoice._id,
+              amountPaid: existingInvoice.amountPaid,
+              amountDue: existingInvoice.amountDue,
+              status: existingInvoice.status,
+            } : null,
+          },
+        });
+        return;
+      }
     }
 
     const invoice = await InvoiceModel.findOne({
@@ -77,6 +100,7 @@ export async function recordPayment(req: Request, res: Response, next: NextFunct
       transactionReference,
       status: 'completed',
       notes,
+      idempotencyKey,
       customFields: customFields || {},
     });
 

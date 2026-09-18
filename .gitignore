@@ -12,5 +12,7 @@ coverage/
 .turbo
 .mongo_data/
 backend/.mongo_data/
+.data/
 uploads/
+
 

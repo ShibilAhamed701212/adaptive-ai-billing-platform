@@ -21,6 +21,10 @@ export interface Product {
   pricingTiers?: PricingTier[];
   customFields: Record<string, any>;
   isActive: boolean;
+  barcode?: string;
+  stockQuantity?: number;
+  lowStockThreshold?: number;
+  manageInventory?: boolean;
   createdAt: string;
   updatedAt: string;
 }

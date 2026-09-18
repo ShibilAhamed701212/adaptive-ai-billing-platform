@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Sparkles, Bot, Send, X, ArrowRight, CheckCircle2, TrendingUp } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Sparkles, Bot, Send, X, ArrowRight, CheckCircle2, TrendingUp, AlertTriangle, Loader2 } from 'lucide-react';
 import { apiRequest } from '../../api/client';
 import { InvoiceCopilotDraft, AskBusinessQueryResponse } from '@billing/shared';
 
@@ -20,19 +20,61 @@ export const AiCopilotDrawer: React.FC<AiCopilotDrawerProps> = ({
   const [invoicePrompt, setInvoicePrompt] = useState<string>('');
   const [draftResult, setDraftResult] = useState<InvoiceCopilotDraft | null>(null);
   const [isCopilotLoading, setIsCopilotLoading] = useState<boolean>(false);
+  const [copilotError, setCopilotError] = useState<string | null>(null);
 
   // Ask Business State
   const [chatQuery, setChatQuery] = useState<string>('');
-  const [chatHistory, setChatHistory] = useState<{ query: string; response: AskBusinessQueryResponse }[]>([]);
+  const [chatHistory, setChatHistory] = useState<{ query: string; response: AskBusinessQueryResponse }[]>([
+    {
+      query: 'Hello! What can you help me with?',
+      response: {
+        answer: 'Hello! I am your **AI Financial Assistant**. You can ask me real-time questions about your revenue, overdue invoices, accounts receivable balances, top customers, or cashflow forecasts.',
+        sourcesUsed: ['AI Assistant'],
+        suggestedFollowUps: [
+          'What is our total revenue and collected amount?',
+          'Which invoices are currently overdue?',
+          'Show breakdown of our customer accounts',
+        ],
+      },
+    },
+  ]);
   const [isChatLoading, setIsChatLoading] = useState<boolean>(false);
+  const [chatError, setChatError] = useState<string | null>(null);
+
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatHistory, isChatLoading]);
 
   if (!isOpen) return null;
+
+  // Simple Markdown to HTML formatter for bold and bullets
+  const renderFormattedAnswer = (text: string) => {
+    const lines = text.split('\n');
+    return lines.map((line, lIdx) => {
+      const parts = line.split(/(\*\*.*?\*\*)/g);
+      return (
+        <p key={lIdx} style={{ margin: '0.25rem 0', lineHeight: 1.5 }}>
+          {parts.map((part, pIdx) => {
+            if (part.startsWith('**') && part.endsWith('**')) {
+              return <strong key={pIdx}>{part.slice(2, -2)}</strong>;
+            }
+            return part;
+          })}
+        </p>
+      );
+    });
+  };
 
   const handleParseInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!invoicePrompt.trim()) return;
 
     setIsCopilotLoading(true);
+    setCopilotError(null);
     try {
       const res = await apiRequest<InvoiceCopilotDraft>('/ai/copilot/draft-invoice', {
         method: 'POST',
@@ -40,9 +82,12 @@ export const AiCopilotDrawer: React.FC<AiCopilotDrawerProps> = ({
       });
       if (res.success && res.data) {
         setDraftResult(res.data);
+      } else {
+        setCopilotError(res.error?.message || 'Could not parse invoice prompt.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      setCopilotError(err.message || 'Network error while contacting AI copilot.');
     } finally {
       setIsCopilotLoading(false);
     }
@@ -53,18 +98,25 @@ export const AiCopilotDrawer: React.FC<AiCopilotDrawerProps> = ({
     const queryToSend = customQuery || chatQuery;
     if (!queryToSend.trim()) return;
 
+    const currentQ = queryToSend;
+    setChatQuery('');
+    setChatError(null);
     setIsChatLoading(true);
+
     try {
       const res = await apiRequest<AskBusinessQueryResponse>('/ai/ask-business', {
         method: 'POST',
-        body: JSON.stringify({ query: queryToSend }),
+        body: JSON.stringify({ query: currentQ }),
       });
+
       if (res.success && res.data) {
-        setChatHistory((prev) => [...prev, { query: queryToSend, response: res.data! }]);
-        setChatQuery('');
+        setChatHistory((prev) => [...prev, { query: currentQ, response: res.data! }]);
+      } else {
+        setChatError(res.error?.message || 'Failed to retrieve business intelligence.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      setChatError(err.message || 'Error processing AI query.');
     } finally {
       setIsChatLoading(false);
     }
@@ -85,7 +137,7 @@ export const AiCopilotDrawer: React.FC<AiCopilotDrawerProps> = ({
       <div
         style={{
           width: '100%',
-          maxWidth: '540px',
+          maxWidth: '560px',
           height: '100%',
           background: '#ffffff',
           borderLeft: '1px solid var(--border-subtle)',
@@ -125,7 +177,7 @@ export const AiCopilotDrawer: React.FC<AiCopilotDrawerProps> = ({
             <div>
               <h3 style={{ fontSize: '1.1rem', margin: 0, color: 'var(--text-primary)' }}>Adaptive AI Copilot</h3>
               <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>
-                Tool-grounded invoicing and conversational financial data
+                Tool-grounded invoicing and conversational financial intelligence
               </p>
             </div>
           </div>
@@ -179,7 +231,7 @@ export const AiCopilotDrawer: React.FC<AiCopilotDrawerProps> = ({
         </div>
 
         {/* Drawer Content */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem', display: 'flex', flexDirection: 'column' }}>
           {activeTab === 'copilot' ? (
             <div>
               <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: '1.45' }}>
@@ -196,6 +248,7 @@ export const AiCopilotDrawer: React.FC<AiCopilotDrawerProps> = ({
                 ].map((sample) => (
                   <button
                     key={sample}
+                    type="button"
                     onClick={() => setInvoicePrompt(sample)}
                     style={{
                       background: '#f8fafc',
@@ -224,12 +277,24 @@ export const AiCopilotDrawer: React.FC<AiCopilotDrawerProps> = ({
                     value={invoicePrompt}
                     onChange={(e) => setInvoicePrompt(e.target.value)}
                   />
-                  <span className="element-desc">Freeform English or voice prompt</span>
+                  <span className="element-desc">Freeform English prompt</span>
                 </div>
-                <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.75rem' }} disabled={isCopilotLoading}>
-                  {isCopilotLoading ? 'Analyzing & Grounding with Catalog...' : '✨ Generate Structured Invoice Draft'}
+                <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.75rem' }} disabled={isCopilotLoading || !invoicePrompt.trim()}>
+                  {isCopilotLoading ? (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <Loader2 size={16} className="animate-spin" /> Analyzing & Grounding with Catalog...
+                    </span>
+                  ) : (
+                    '✨ Generate Structured Invoice Draft'
+                  )}
                 </button>
               </form>
+
+              {copilotError && (
+                <div style={{ marginTop: '1rem', background: '#ffe4e6', border: '1px solid #fecdd3', color: '#e11d48', padding: '0.75rem', borderRadius: '6px', fontSize: '0.8rem' }}>
+                  <AlertTriangle size={14} style={{ display: 'inline', marginRight: '0.35rem' }} /> {copilotError}
+                </div>
+              )}
 
               {/* Parsed Result Preview */}
               {draftResult && (
@@ -277,6 +342,7 @@ export const AiCopilotDrawer: React.FC<AiCopilotDrawerProps> = ({
 
                   {onApplyDraftToInvoice && (
                     <button
+                      type="button"
                       className="btn btn-primary btn-sm"
                       style={{ width: '100%' }}
                       onClick={() => {
@@ -291,13 +357,13 @@ export const AiCopilotDrawer: React.FC<AiCopilotDrawerProps> = ({
               )}
             </div>
           ) : (
-            <div>
-              <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100%' }}>
+              <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
                 Ask financial questions in real-time. Responses are calculated directly from your tenant's MongoDB ledger.
               </p>
 
               {/* Sample Queries */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginBottom: '1rem' }}>
                 <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>Quick Financial Queries:</span>
                 {[
                   'What is our total revenue and collected amount?',
@@ -306,12 +372,13 @@ export const AiCopilotDrawer: React.FC<AiCopilotDrawerProps> = ({
                 ].map((sample) => (
                   <button
                     key={sample}
+                    type="button"
                     onClick={() => handleAskBusiness(undefined, sample)}
                     style={{
                       background: '#f8fafc',
                       border: '1px solid #e2e8f0',
                       borderRadius: 'var(--radius-sm)',
-                      padding: '0.45rem 0.65rem',
+                      padding: '0.4rem 0.65rem',
                       fontSize: '0.75rem',
                       color: 'var(--text-primary)',
                       cursor: 'pointer',
@@ -324,9 +391,9 @@ export const AiCopilotDrawer: React.FC<AiCopilotDrawerProps> = ({
               </div>
 
               {/* Chat Thread */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1, marginBottom: '1rem' }}>
                 {chatHistory.map((item, idx) => (
-                  <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                     {/* User bubble */}
                     <div
                       style={{
@@ -351,22 +418,24 @@ export const AiCopilotDrawer: React.FC<AiCopilotDrawerProps> = ({
                         padding: '0.85rem 1rem',
                         borderRadius: '12px 12px 12px 2px',
                         fontSize: '0.8125rem',
-                        maxWidth: '92%',
+                        maxWidth: '94%',
                         lineHeight: '1.45',
                         border: '1px solid #e2e8f0',
                       }}
                     >
-                      <div style={{ marginBottom: '0.5rem', color: 'var(--text-primary)' }}>{item.response.answer}</div>
+                      <div style={{ color: 'var(--text-primary)' }}>
+                        {renderFormattedAnswer(item.response.answer)}
+                      </div>
 
                       {/* Chart Data Summary */}
-                      {item.response.chartData && (
-                        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '0.6rem', margin: '0.5rem 0' }}>
+                      {item.response.chartData && item.response.chartData.labels && (
+                        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '0.6rem', margin: '0.6rem 0 0.4rem' }}>
                           <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                            Aggregated Metric:
+                            Aggregated Telemetry Breakdown:
                           </span>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', marginTop: '0.3rem' }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', marginTop: '0.35rem' }}>
                             {item.response.chartData.labels.map((lbl, lIdx) => (
-                              <div key={lbl} style={{ fontSize: '0.75rem' }}>
+                              <div key={lbl} style={{ fontSize: '0.75rem', background: '#f8fafc', padding: '0.25rem 0.5rem', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
                                 <span style={{ color: 'var(--text-muted)' }}>{lbl}:</span>{' '}
                                 <strong style={{ fontFamily: 'var(--font-mono)' }}>₹{(item.response.chartData?.datasets[0]?.data[lIdx] || 0).toLocaleString()}</strong>
                               </div>
@@ -377,18 +446,20 @@ export const AiCopilotDrawer: React.FC<AiCopilotDrawerProps> = ({
 
                       {/* Follow-Up Suggestions */}
                       {item.response.suggestedFollowUps && (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginTop: '0.5rem' }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginTop: '0.6rem' }}>
                           {item.response.suggestedFollowUps.map((fu, fIdx) => (
                             <button
                               key={fIdx}
+                              type="button"
                               onClick={() => handleAskBusiness(undefined, fu)}
                               style={{
                                 background: '#ffffff',
-                                border: '1px solid #cbd5e1',
+                                border: '1px solid #c7d2fe',
                                 borderRadius: '9999px',
-                                padding: '0.2rem 0.5rem',
+                                padding: '0.25rem 0.6rem',
                                 fontSize: '0.7rem',
                                 color: 'var(--accent-primary)',
+                                fontWeight: 500,
                                 cursor: 'pointer',
                               }}
                             >
@@ -400,14 +471,42 @@ export const AiCopilotDrawer: React.FC<AiCopilotDrawerProps> = ({
                     </div>
                   </div>
                 ))}
+
+                {isChatLoading && (
+                  <div
+                    style={{
+                      alignSelf: 'flex-start',
+                      background: '#f8fafc',
+                      padding: '0.75rem 1rem',
+                      borderRadius: '12px 12px 12px 2px',
+                      fontSize: '0.8rem',
+                      color: 'var(--text-secondary)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      border: '1px solid #e2e8f0',
+                    }}
+                  >
+                    <Loader2 size={15} className="animate-spin" color="var(--accent-primary)" />
+                    Querying financial ledger & reasoning...
+                  </div>
+                )}
+
+                {chatError && (
+                  <div style={{ background: '#ffe4e6', border: '1px solid #fecdd3', color: '#e11d48', padding: '0.75rem', borderRadius: '6px', fontSize: '0.8rem' }}>
+                    <AlertTriangle size={14} style={{ display: 'inline', marginRight: '0.35rem' }} /> {chatError}
+                  </div>
+                )}
+
+                <div ref={chatEndRef} />
               </div>
 
               {/* Chat Input */}
-              <form onSubmit={handleAskBusiness} style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+              <form onSubmit={handleAskBusiness} style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto' }}>
                 <input
                   type="text"
                   className="form-input"
-                  placeholder="Ask a question about your revenue, clients..."
+                  placeholder="Ask about revenue, overdue invoices, customers..."
                   value={chatQuery}
                   onChange={(e) => setChatQuery(e.target.value)}
                 />

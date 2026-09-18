@@ -58,43 +58,150 @@ export async function askBusiness(req: Request, res: Response, next: NextFunctio
   }
 }
 
-export async function suggestModelOnboarding(req: Request, res: Response): Promise<void> {
-  const { businessDescription, industry } = req.body;
-  const desc = `${businessDescription || ''} ${industry || ''}`.toLowerCase();
+export async function suggestModelOnboarding(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { businessDescription, industry } = req.body;
+    
+    const { callLLM } = await import('../../ai/llm-provider');
+    const systemPrompt = `You are an AI Billing Architect. Based on the business description and industry, suggest the best base billing model.
+Valid models are: 'retail', 'subscription', 'rental', 'logistics', 'professional_services'.
+Return ONLY valid JSON matching this structure:
+{
+  "suggestedModel": "string",
+  "matchScore": number (80-99),
+  "reason": "string"
+}`;
 
-  let matchedModel = 'retail';
-  let matchScore = 85;
-  let reason = 'Standard product catalog and direct invoicing';
+    const llmResult = await callLLM([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `Description: ${businessDescription}\nIndustry: ${industry}` }
+    ], { json: true });
 
-  if (desc.includes('subscri') || desc.includes('saas') || desc.includes('software') || desc.includes('monthly fee') || desc.includes('recurring')) {
-    matchedModel = 'subscription';
-    matchScore = 96;
-    reason = 'Identified recurring subscriptions, plans, and cycle management needs.';
-  } else if (desc.includes('rent') || desc.includes('equipment') || desc.includes('lease') || desc.includes('deposit') || desc.includes('property')) {
-    matchedModel = 'rental';
-    matchScore = 94;
-    reason = 'Identified rental periods, security deposits, and asset return workflows.';
-  } else if (desc.includes('truck') || desc.includes('freight') || desc.includes('logistics') || desc.includes('shipment') || desc.includes('distance') || desc.includes('toll')) {
-    matchedModel = 'logistics';
-    matchScore = 95;
-    reason = 'Identified consignment tracking, weight/distance metrics, and vehicle metadata.';
-  } else if (desc.includes('consult') || desc.includes('agency') || desc.includes('hourly') || desc.includes('project') || desc.includes('retainer')) {
-    matchedModel = 'professional_services';
-    matchScore = 92;
-    reason = 'Identified milestone billing, rate cards, and project codes.';
+    if (!llmResult) throw new Error('LLM failed to return a response.');
+    const parsed = JSON.parse(llmResult);
+    
+    // Ensure we have a valid preset model
+    const matchedModel = BILLING_MODEL_PRESETS[parsed.suggestedModel] ? parsed.suggestedModel : 'retail';
+    const preset = BILLING_MODEL_PRESETS[matchedModel];
+
+    res.json({
+      success: true,
+      data: {
+        suggestedModel: matchedModel,
+        matchScore: parsed.matchScore || 85,
+        reason: parsed.reason || 'Standard product catalog and direct invoicing',
+        preset,
+      },
+    });
+  } catch (err) {
+    next(err);
   }
+}
 
-  const preset = BILLING_MODEL_PRESETS[matchedModel];
+export async function interactiveOnboardingInterview(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { messages = [], businessDescription = '', answers = {}, forceFinalize = false } = req.body;
 
-  res.json({
-    success: true,
-    data: {
-      suggestedModel: matchedModel,
-      matchScore,
-      reason,
-      preset,
-    },
-  });
+    // Compile entire conversation history context
+    const conversationContext = messages.map((m: any) => `${m.role.toUpperCase()}: ${m.content}`).join('\n');
+    const answersContext = Object.entries(answers).map(([q, a]) => `- ${q}: ${a}`).join('\n');
+
+    const promptText = `
+User Business Input:
+"${businessDescription}"
+
+${answersContext ? `User Answers to Previous Questions:\n${answersContext}\n` : ''}
+${conversationContext ? `Conversation History:\n${conversationContext}\n` : ''}
+Force Finalize Blueprint: ${forceFinalize ? 'YES' : 'NO'}
+
+Evaluate if more clarifying questions are needed to configure custom fields and billing rules, OR if we have enough details to produce the final tailored architecture blueprint.
+`;
+
+    const systemPrompt = `You are the Lead AI Billing Architect for an enterprise multi-tenant billing platform.
+Your job is to have a conversational discovery interview with the user about their business, ask 2 to 3 insightful clarifying questions when helpful, and formulate a tailored billing architecture blueprint with custom schema fields and business rules.
+
+Supported base billing models:
+- subscription: SaaS, tiered licensing, memberships, recurring cycles
+- rental: Equipment leasing, vehicles, real estate, daily/monthly hire with deposits
+- logistics: Freight transport, consignment per km/ton, fleet/driver metadata, toll/fuel surcharges
+- professional_services: Agencies, legal/consulting, milestone billing, hourly rate cards, retainer POs
+- retail: POS counter, ecommerce, inventory, barcode scanning, instant receipts
+
+INSTRUCTIONS:
+1. If the user input is brief, conversational, or has unanswered questions (and forceFinalize is false), set "status": "interviewing".
+2. Provide a conversational, encouraging "aiMessage".
+3. Provide 2-3 "clarifyingQuestions" with multiple-choice "options" to pin down their specific billing needs (e.g. billing cadence, custom invoice fields, deposit requirements).
+4. Provide an interim "architecture" proposal tailored to what is known so far.
+5. If the user has answered the clarifying questions OR forceFinalize is true, set "status": "ready" with a complete tailored architecture (customFields, businessRules, recommendedModules).
+
+YOU MUST RESPOND ONLY WITH VALID JSON IN THIS FORMAT:
+{
+  "status": "interviewing" | "ready",
+  "aiMessage": "string",
+  "clarifyingQuestions": [
+    {
+      "id": "q1",
+      "question": "string",
+      "options": ["Option A", "Option B", "Option C", "Option D"]
+    }
+  ],
+  "architecture": {
+    "modelName": "string",
+    "baseBillingModel": "subscription" | "rental" | "logistics" | "professional_services" | "retail",
+    "matchScore": number (85-99),
+    "summary": "string",
+    "customFields": [
+      {
+        "targetEntity": "invoice" | "customer" | "product",
+        "fieldName": "string (camelCase)",
+        "label": "string",
+        "fieldType": "text" | "number" | "select" | "date" | "boolean",
+        "options": ["optional", "for", "select"],
+        "required": boolean,
+        "placeholder": "string"
+      }
+    ],
+    "businessRules": [
+      {
+        "ruleName": "string",
+        "description": "string",
+        "event": "beforeInvoiceCalculate",
+        "condition": { "field": "invoiceSubtotal", "operator": "greater_than", "value": 50000 },
+        "action": { "type": "apply_discount", "value": 5, "message": "5% Volume Discount" }
+      }
+    ],
+    "recommendedModules": ["invoices", "customers", "products", "payments", "subscriptions", "reports", "ai_copilot"],
+    "suggestedTaxSystem": "GST"
+  }
+}`;
+
+    const { callLLM } = await import('../../ai/llm-provider');
+    const llmResult = await callLLM(
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: promptText },
+      ],
+      { json: true }
+    );
+
+    if (!llmResult) {
+      throw new Error('LLM failed to return a response.');
+    }
+
+    try {
+      const parsed = JSON.parse(llmResult);
+      if (parsed && parsed.architecture) {
+        res.json({ success: true, data: parsed });
+        return;
+      }
+      throw new Error('Invalid JSON structure returned by LLM');
+    } catch (e: any) {
+      console.error('Failed to parse LLM onboarding JSON response:', e);
+      res.status(500).json({ success: false, error: { message: 'AI failed to generate a valid response', details: e.message } });
+    }
+  } catch (err) {
+    next(err);
+  }
 }
 
 export async function parseOcrDocument(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -106,49 +213,78 @@ export async function parseOcrDocument(req: Request, res: Response, next: NextFu
       return;
     }
 
-    // Heuristic OCR extraction engine
-    const text = String(rawText);
-    const gstinMatch = text.match(/\b\d{2}[A-Z]{5}\d{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}\b/i);
-    const invoiceNoMatch = text.match(/(?:inv(?:oice)?|bill|tax invoice)[\s#:]*([A-Za-z0-9\-_/]+)/i);
-    const totalMatch = text.match(/(?:total|grand total|net amount|amount due)[\s:₹rs$]*([\d,]+(?:\.\d{2})?)/i);
+    const { callLLM } = await import('../../ai/llm-provider');
+    const systemPrompt = `You are an OCR extraction AI. Extract the invoice details from the given text. 
+Return ONLY valid JSON matching this structure:
+{
+  "extractedGstin": "string | null",
+  "extractedInvoiceNumber": "string | null",
+  "extractedTotal": number | null,
+  "items": [
+    { "description": "string", "quantity": number, "unitPrice": number, "taxRate": number, "lineTotal": number }
+  ],
+  "confidenceScore": number (0 to 1)
+}`;
 
-    // Extract item lines
-    const lines = text.split('\n').filter((l) => l.trim().length > 0);
-    const items: any[] = [];
+    const llmResult = await callLLM([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `Document Type: ${documentType}\n\nRaw Text:\n${rawText}` }
+    ], { json: true });
 
-    lines.forEach((line) => {
-      const itemMatch = line.match(/^(.+?)\s+(\d+(?:\.\d+)?)\s+(?:x\s+)?(\d+(?:\.\d+)?)/);
-      if (itemMatch && !line.toLowerCase().includes('total') && !line.toLowerCase().includes('subtotal')) {
-        items.push({
-          description: itemMatch[1].trim(),
-          quantity: parseFloat(itemMatch[2]),
-          unitPrice: parseFloat(itemMatch[3]),
-          taxRate: 0.18,
-          lineTotal: Math.round(parseFloat(itemMatch[2]) * parseFloat(itemMatch[3]) * 1.18 * 100) / 100,
-        });
-      }
-    });
+    if (!llmResult) throw new Error('LLM failed to return a response.');
 
-    if (items.length === 0) {
-      items.push({
-        description: 'Scanned Document Item',
-        quantity: 1,
-        unitPrice: totalMatch ? parseFloat(totalMatch[1].replace(/,/g, '')) / 1.18 : 1000,
-        taxRate: 0.18,
-        lineTotal: totalMatch ? parseFloat(totalMatch[1].replace(/,/g, '')) : 1180,
-      });
-    }
+    const parsed = JSON.parse(llmResult);
+    parsed.documentType = documentType;
 
     res.json({
       success: true,
-      data: {
-        documentType,
-        extractedGstin: gstinMatch ? gstinMatch[0] : undefined,
-        extractedInvoiceNumber: invoiceNoMatch ? invoiceNoMatch[1] : undefined,
-        extractedTotal: totalMatch ? parseFloat(totalMatch[1].replace(/,/g, '')) : undefined,
-        items,
-        confidenceScore: 0.91,
-      },
+      data: parsed,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function parseOcrDocumentUpload(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ success: false, error: { code: 'MISSING_FILE', message: 'An image or PDF file is required for OCR parsing' } });
+      return;
+    }
+
+    const { callLLM } = await import('../../ai/llm-provider');
+    const systemPrompt = `You are a highly accurate OCR extraction AI. Extract the invoice or receipt details from the provided image.
+Return ONLY valid JSON matching this structure:
+{
+  "extractedGstin": "string | null",
+  "extractedInvoiceNumber": "string | null",
+  "extractedTotal": number | null,
+  "items": [
+    { "description": "string", "quantity": number, "unitPrice": number, "taxRate": number, "lineTotal": number }
+  ],
+  "confidenceScore": number (0 to 1)
+}`;
+
+    const base64Data = file.buffer.toString('base64');
+
+    const llmResult = await callLLM([
+      { role: 'system', content: systemPrompt },
+      { 
+        role: 'user', 
+        content: `Please extract the invoice details from this document.`,
+        inlineData: { mimeType: file.mimetype, data: base64Data }
+      }
+    ], { json: true });
+
+    if (!llmResult) throw new Error('LLM failed to return a response.');
+
+    const parsed = JSON.parse(llmResult);
+    parsed.documentType = 'invoice';
+
+    res.json({
+      success: true,
+      data: parsed,
     });
   } catch (err) {
     next(err);
@@ -164,28 +300,27 @@ export async function generateSmartReminder(req: Request, res: Response, next: N
       return;
     }
 
-    let subject = `Friendly Reminder: Invoice #${invoiceNumber} from Nexus Cloud`;
-    let message = `Hi ${customerName},\n\nWe hope you're having a great week! This is a gentle reminder that invoice #${invoiceNumber} for ₹${Number(amountDue).toLocaleString()} is scheduled for payment on ${dueDate || 'the due date'}.\n\nPlease let us know if you have any questions or need a copy of the invoice.\n\nWarm regards,\nFinance Team`;
-    let recommendedSendTime = 'Tuesday, 10:00 AM (Optimal client open rate)';
+    const { callLLM } = await import('../../ai/llm-provider');
+    const systemPrompt = `You are a Smart Reminder AI for a billing system. Generate an email reminder based on the details provided.
+Return ONLY valid JSON matching this structure:
+{
+  "subject": "string",
+  "message": "string",
+  "recommendedSendTime": "string",
+  "tone": "string"
+}`;
 
-    if (tone === 'firm') {
-      subject = `Important: Payment Overdue for Invoice #${invoiceNumber}`;
-      message = `Dear ${customerName},\n\nOur records indicate that invoice #${invoiceNumber} for ₹${Number(amountDue).toLocaleString()} is currently past due. To ensure uninterrupted service, please process the settlement at your earliest convenience.\n\nThank you for your prompt attention.\n\nSincerely,\nAccounts Receivable`;
-      recommendedSendTime = 'Immediate (Business Hours: 9:00 AM - 12:00 PM)';
-    } else if (tone === 'urgent') {
-      subject = `Urgent Notice: Settlement required for Invoice #${invoiceNumber}`;
-      message = `Dear ${customerName},\n\nInvoice #${invoiceNumber} (Amount: ₹${Number(amountDue).toLocaleString()}) is significantly overdue. Please expedite this payment today to avoid service suspension or interest charges.\n\nAccounts Management`;
-      recommendedSendTime = 'Immediate';
-    }
+    const llmResult = await callLLM([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `Customer: ${customerName}\nInvoice: ${invoiceNumber}\nAmount Due: ${amountDue}\nDue Date: ${dueDate || 'Not set'}\nRequested Tone: ${tone}` }
+    ], { json: true });
+
+    if (!llmResult) throw new Error('LLM failed to return a response.');
+    const parsed = JSON.parse(llmResult);
 
     res.json({
       success: true,
-      data: {
-        tone,
-        subject,
-        message,
-        recommendedSendTime,
-      },
+      data: parsed,
     });
   } catch (err) {
     next(err);
@@ -201,55 +336,42 @@ export async function generateAiInvoiceTemplate(req: Request, res: Response, nex
       return;
     }
 
-    const lower = prompt.toLowerCase();
-    let primary = '#6366f1';
-    let accent = '#10b981';
-    let templateName = 'Modern Minimalist';
+    const { callLLM } = await import('../../ai/llm-provider');
+    const systemPrompt = `You are an AI Invoice Template Designer. Based on the user prompt and industry, design a JSON specification for an invoice template.
+Return ONLY valid JSON matching this structure:
+{
+  "templateName": "string",
+  "description": "string",
+  "layout": {
+    "showLogo": boolean,
+    "showGstin": boolean,
+    "showHsnSac": boolean,
+    "showCustomFields": boolean,
+    "showPaymentTerms": boolean,
+    "showNotes": boolean,
+    "showTaxBreakdown": boolean,
+    "showBankDetails": boolean,
+    "columns": ["description", "quantity", "unitPrice", "taxRate", "lineTotal"],
+    "sections": ["header", "customerInfo", "items", "taxBreakdown", "totals", "bankDetails", "notes", "footer"],
+    "headerText": "string",
+    "footerText": "string"
+  },
+  "brandColors": { "primary": "hex", "accent": "hex", "textColor": "hex", "bgColor": "hex" },
+  "fontFamily": "string",
+  "isDefault": false
+}`;
 
-    if (lower.includes('blue') || lower.includes('corporate') || lower.includes('logistics')) {
-      primary = '#2563eb';
-      accent = '#38bdf8';
-      templateName = 'Corporate Blue';
-    } else if (lower.includes('dark') || lower.includes('obsidian') || lower.includes('tech')) {
-      primary = '#8b5cf6';
-      accent = '#06b6d4';
-      templateName = 'Obsidian Tech';
-    } else if (lower.includes('green') || lower.includes('eco') || lower.includes('retail')) {
-      primary = '#059669';
-      accent = '#10b981';
-      templateName = 'Emerald Commerce';
-    }
+    const llmResult = await callLLM([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `Prompt: ${prompt}\nIndustry: ${industry || 'General'}` }
+    ], { json: true });
 
-    const templateSpec = {
-      templateName,
-      description: `AI-generated template based on: "${prompt}"`,
-      layout: {
-        showLogo: true,
-        showGstin: true,
-        showHsnSac: lower.includes('hsn') || industry === 'retail' || industry === 'logistics',
-        showCustomFields: true,
-        showPaymentTerms: true,
-        showNotes: true,
-        showTaxBreakdown: true,
-        showBankDetails: true,
-        columns: ['description', 'quantity', 'unitPrice', 'taxRate', 'lineTotal'],
-        sections: ['header', 'customerInfo', 'items', 'taxBreakdown', 'totals', 'bankDetails', 'notes', 'footer'],
-        headerText: 'Tax Invoice',
-        footerText: 'Thank you for your business.',
-      },
-      brandColors: {
-        primary,
-        accent,
-        textColor: '#0f172a',
-        bgColor: '#ffffff',
-      },
-      fontFamily: 'Outfit, sans-serif',
-      isDefault: false,
-    };
+    if (!llmResult) throw new Error('LLM failed to return a response.');
+    const parsed = JSON.parse(llmResult);
 
     res.json({
       success: true,
-      data: templateSpec,
+      data: parsed,
     });
   } catch (err) {
     next(err);

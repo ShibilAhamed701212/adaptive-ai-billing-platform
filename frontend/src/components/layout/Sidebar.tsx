@@ -8,7 +8,14 @@ import {
   Sliders,
   CreditCard,
   Building2,
+  Repeat,
+  FileMinus,
+  ShieldCheck,
+  TrendingUp,
+  ShieldAlert,
 } from 'lucide-react';
+
+import { useAuth } from '../../context/AuthContext';
 
 interface SidebarProps {
   currentPath: string;
@@ -16,15 +23,29 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentPath, onNavigate }) => {
-  const menuItems = [
-    { label: 'Executive Dashboard', desc: 'KPIs, AI daily brief & cashflow forecast', path: '/dashboard', icon: LayoutDashboard },
-    { label: 'Invoicing Studio', desc: 'Create, issue & print tax invoices', path: '/invoices', icon: FileText },
-    { label: 'Payments & AR', desc: 'Reconciliations, refunds & ledger', path: '/payments', icon: CreditCard },
-    { label: 'Customers', desc: 'Client profiles, GSTIN & balances', path: '/customers', icon: Users },
-    { label: 'Products & Services', desc: 'SKUs, pricing tiers & tax rates', path: '/products', icon: Package },
-    { label: 'AI Model Onboarding', desc: 'Business discovery & model matcher', path: '/onboarding', icon: Wand2 },
-    { label: 'Dynamic Rules & Fields', desc: 'Point-and-click schema configuration', path: '/settings', icon: Sliders },
+  const { organization } = useAuth();
+  const enabledModules = organization?.enabledModules || [];
+
+  const allMenuItems = [
+    { label: 'Executive Dashboard', desc: 'KPIs, AI daily brief & forecast', path: '/dashboard', icon: LayoutDashboard },
+    { label: 'Point of Sale (POS)', desc: 'Retail checkout & barcode scanner', path: '/pos', icon: Package, module: 'pos' },
+    { label: 'Invoicing Studio', desc: 'Create, issue & print tax invoices', path: '/invoices', icon: FileText, module: 'invoices' },
+    { label: 'Payments & AR', desc: 'Reconciliations, refunds & ledger', path: '/payments', icon: CreditCard, module: 'payments' },
+    { label: 'Recurring Subscriptions', desc: 'Automate periodic billing schedules', path: '/recurring', icon: Repeat, module: 'subscriptions' },
+    { label: 'Credit Notes & Rebates', desc: 'Issue credit notes against invoices', path: '/credit-notes', icon: FileMinus, module: 'credit_notes' },
+    { label: 'Approval Queue', desc: 'Manager review for large invoices', path: '/approvals', icon: ShieldCheck, module: 'approvals' },
+    { label: 'Financial Reports', desc: 'Revenue, AR aging & statements', path: '/reports', icon: TrendingUp, module: 'reports' },
+    { label: 'Customers', desc: 'Client profiles, GSTIN & balances', path: '/customers', icon: Users, module: 'customers' },
+    { label: 'Products & Services', desc: 'SKUs, pricing tiers & tax rates', path: '/products', icon: Package, module: 'products' },
+    { label: 'Dynamic Rules & Studio', desc: 'Custom templates, fields & rules', path: '/settings', icon: Sliders },
+    { label: 'AI Model Onboarding', desc: 'Business discovery & matcher', path: '/onboarding', icon: Wand2 },
+    { label: 'Compliance & Audit', desc: 'Immutable audit logs & tracking', path: '/audit', icon: ShieldAlert },
   ];
+
+  const menuItems = allMenuItems.filter((item) => {
+    if (!item.module) return true; // Always show if no module restriction
+    return enabledModules.includes(item.module);
+  });
 
   return (
     <aside

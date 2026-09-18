@@ -28,11 +28,16 @@ const PaymentSchema = new Schema<IPaymentDoc>(
       default: 'completed',
     },
     notes: String,
+    idempotencyKey: { type: String, sparse: true },
     customFields: { type: Schema.Types.Mixed, default: {} },
   },
   { timestamps: true }
 );
 
 PaymentSchema.index({ organizationId: 1, paymentDate: -1 });
+PaymentSchema.index(
+  { organizationId: 1, idempotencyKey: 1 },
+  { unique: true, partialFilterExpression: { idempotencyKey: { $type: 'string' } } }
+);
 
 export const PaymentModel = mongoose.model<IPaymentDoc>('Payment', PaymentSchema);

@@ -18,6 +18,11 @@ export const createProductSchema = z.object({
   hsnSacCode: z.string().max(20).optional(),
   pricingTiers: z.array(pricingTierSchema).optional().default([]),
   customFields: z.record(z.any()).optional().default({}),
+  barcode: z.string().optional(),
+  stockQuantity: z.number().optional().default(0),
+  lowStockThreshold: z.number().optional().default(5),
+  manageInventory: z.boolean().optional().default(false),
+  isActive: z.boolean().optional().default(true),
 });
 
 export const updateProductSchema = z.object({
@@ -27,11 +32,15 @@ export const updateProductSchema = z.object({
   unit: z.string().max(30).optional(),
   unitPrice: z.number().min(0).optional(),
   costPrice: z.number().min(0).optional(),
-  taxRate: z.number().min(0).max(1).optional(),
-  hsnSacCode: z.string().max(20).optional(),
+  taxRate: z.number().min(0).default(0.18),
+  hsnSacCode: z.string().optional(),
   pricingTiers: z.array(pricingTierSchema).optional(),
-  customFields: z.record(z.any()).optional(),
-  isActive: z.boolean().optional(),
+  customFields: z.record(z.any()).optional().default({}),
+  isActive: z.boolean().optional().default(true),
+  barcode: z.string().optional(),
+  stockQuantity: z.number().optional().default(0),
+  lowStockThreshold: z.number().optional().default(5),
+  manageInventory: z.boolean().optional().default(false),
 });
 
 export type CreateProductInput = z.infer<typeof createProductSchema>;

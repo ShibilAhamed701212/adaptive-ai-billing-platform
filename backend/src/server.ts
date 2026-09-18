@@ -2,9 +2,14 @@ import { createApp } from './app';
 import { connectDB } from './config/db';
 import { ENV } from './config/env';
 
+import { startCronJobs } from './jobs/scheduler';
+
 async function bootstrap() {
   await connectDB();
   const app = createApp();
+
+  // Start background jobs
+  startCronJobs();
 
   const server = app.listen(ENV.PORT, () => {
     console.log(`🚀 [Server] Adaptive Billing Platform API running on http://localhost:${ENV.PORT}`);

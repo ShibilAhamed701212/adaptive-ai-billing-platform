@@ -23,6 +23,7 @@ export interface Payment {
   transactionReference?: string;
   status: PaymentStatus;
   notes?: string;
+  idempotencyKey?: string;
   customFields?: Record<string, any>;
   createdAt: string;
   updatedAt: string;

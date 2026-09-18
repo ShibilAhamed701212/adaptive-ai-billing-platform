@@ -85,16 +85,25 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
         {error && (
           <div
             style={{
-              background: 'var(--color-danger-bg)',
-              border: '1px solid rgba(244, 63, 94, 0.3)',
-              color: 'var(--color-danger)',
-              padding: '0.75rem',
+              background: error.includes('MongoDB') ? 'rgba(239, 68, 68, 0.12)' : 'var(--color-danger-bg)',
+              border: '1px solid rgba(244, 63, 94, 0.35)',
+              color: '#fca5a5',
+              padding: '1rem',
               borderRadius: 'var(--radius-md)',
               fontSize: '0.85rem',
               marginBottom: '1.25rem',
+              lineHeight: 1.5,
             }}
           >
-            {error}
+            <div style={{ fontWeight: 600, color: '#fda4af', marginBottom: error.includes('MongoDB') ? '0.4rem' : '0' }}>
+              {error.includes('MongoDB') ? '⚠️ Database Not Connected' : 'Error'}
+            </div>
+            <div>{error}</div>
+            {error.includes('MongoDB') && (
+              <div style={{ marginTop: '0.6rem', paddingTop: '0.6rem', borderTop: '1px solid rgba(244, 63, 94, 0.2)', fontSize: '0.78rem', color: '#cbd5e1' }}>
+                💡 <strong>Quick Fix:</strong> Start MongoDB locally or Docker (<code>docker compose up -d</code>), or paste your free MongoDB Atlas URI into <code>.env</code>.
+              </div>
+            )}
           </div>
         )}
 

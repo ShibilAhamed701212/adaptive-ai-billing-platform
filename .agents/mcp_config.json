@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "mongodb": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-mongodb",
+        "${MONGODB_URI}"
+      ],
+      "env": {
+        "MONGODB_URI": "mongodb://127.0.0.1:27017/adaptive_billing"
+      }
+    }
+  }
+}

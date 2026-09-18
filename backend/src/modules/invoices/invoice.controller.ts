@@ -9,6 +9,8 @@ import { validateCustomFields } from '../../dynamic-engine/custom-fields/field-v
 import { evaluateBusinessRules } from '../../dynamic-engine/rules/rule-evaluator';
 import { logAuditEvent } from '../../core/audit/audit.service';
 import mongoose from 'mongoose';
+import { generateInvoicePdf } from './invoice.pdf';
+import { sendInvoiceEmail } from './invoice.email';
 
 export async function listInvoices(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -435,6 +437,54 @@ export async function deleteInvoice(req: Request, res: Response, next: NextFunct
     });
 
     res.json({ success: true, message: `Invoice ${invoice.invoiceNumber} has been cancelled successfully.` });
+  } catch (err) {
+    next(err);
+  }
+}
+
+
+
+export async function downloadPdf(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const orgId = req.tenant!.organizationId;
+    const invoice = await InvoiceModel.findOne({ _id: req.params.id, organizationId: new mongoose.Types.ObjectId(orgId) }).lean();
+    if (!invoice) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Invoice not found' } });
+      return;
+    }
+    const org = await OrganizationModel.findById(orgId).lean();
+    await generateInvoicePdf(invoice, org, res);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function sendEmail(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const orgId = req.tenant!.organizationId;
+    const invoice = await InvoiceModel.findOne({ _id: req.params.id, organizationId: new mongoose.Types.ObjectId(orgId) }).lean();
+    if (!invoice) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Invoice not found' } });
+      return;
+    }
+    const org = await OrganizationModel.findById(orgId).lean();
+    
+    // In a real app you might accept a recipient email in the request body, 
+    // but here we just use the customer's email from the snapshot.
+    const toEmail = req.body.email || invoice.customerSnapshot.email;
+    if (!toEmail) {
+      res.status(400).json({ success: false, error: { code: 'MISSING_EMAIL', message: 'No email address available for customer.' } });
+      return;
+    }
+
+    await sendInvoiceEmail(invoice, org, toEmail);
+    
+    // Update status to sent if it was just approved (or draft)
+    if (invoice.status === 'draft' || invoice.status === 'approved') {
+      await InvoiceModel.updateOne({ _id: invoice._id }, { status: 'sent' });
+    }
+
+    res.json({ success: true, message: `Email sent to ${toEmail}` });
   } catch (err) {
     next(err);
   }

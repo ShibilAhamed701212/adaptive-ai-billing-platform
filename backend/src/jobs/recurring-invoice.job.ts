@@ -113,21 +113,27 @@ export async function executeRecurringProfileGeneration(profile: IRecurringProfi
   return invoice;
 }
 
-export async function processAllPendingRecurringInvoices(): Promise<number> {
+export async function processAllPendingRecurringInvoices(orgId?: string): Promise<{ generatedCount: number; failedCount: number }> {
   const now = new Date();
-  const profilesToRun = await RecurringProfileModel.find({
+  const query: any = {
     status: 'active',
     nextRunDate: { $lte: now },
-  });
+  };
+  if (orgId) {
+    query.organizationId = orgId;
+  }
+  const profilesToRun = await RecurringProfileModel.find(query);
 
-  let count = 0;
+  let generatedCount = 0;
+  let failedCount = 0;
   for (const profile of profilesToRun) {
     try {
       await executeRecurringProfileGeneration(profile);
-      count++;
+      generatedCount++;
     } catch (err) {
       console.error(`Failed to process recurring profile ${profile._id}:`, err);
+      failedCount++;
     }
   }
-  return count;
+  return { generatedCount, failedCount };
 }

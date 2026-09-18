@@ -1,6 +1,6 @@
 import { ApiResponse } from '@billing/shared';
 
-const API_BASE = '/api/v1';
+const API_BASE = `${import.meta.env.VITE_API_URL || ''}/api/v1`;
 
 export async function apiRequest<T = any>(
   endpoint: string,

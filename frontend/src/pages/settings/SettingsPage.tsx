@@ -2,11 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest } from '../../api/client';
 import { CustomFieldDefinition, BusinessRule, TargetEntity, CustomFieldType } from '@billing/shared';
-import { Sliders, Plus, Trash2, Layers, Cpu, Building2, CheckCircle2 } from 'lucide-react';
+import { Sliders, Plus, Trash2, Layers, Cpu, Building2, CheckCircle2, Palette } from 'lucide-react';
+import { InvoiceTemplateCustomizer } from '../../components/invoices/InvoiceTemplateCustomizer';
 
 export const SettingsPage: React.FC = () => {
   const { organization, updateOrganization } = useAuth();
-  const [activeTab, setActiveTab] = useState<'fields' | 'rules' | 'org'>('fields');
+  const [activeTab, setActiveTab] = useState<'fields' | 'rules' | 'org' | 'templates'>('fields');
+
 
   // Custom Fields State
   const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
@@ -191,6 +193,12 @@ export const SettingsPage: React.FC = () => {
           onClick={() => setActiveTab('org')}
         >
           <Building2 size={15} /> Tenant & Tax Preferences
+        </button>
+        <button
+          className={`btn ${activeTab === 'templates' ? 'btn-primary' : 'btn-secondary'} btn-sm`}
+          onClick={() => setActiveTab('templates')}
+        >
+          <Palette size={15} /> Custom Invoice Studio
         </button>
       </div>
 
@@ -539,6 +547,10 @@ export const SettingsPage: React.FC = () => {
           </form>
         </div>
       )}
+
+      {/* Tab 4: Custom Invoice Templates Studio */}
+      {activeTab === 'templates' && <InvoiceTemplateCustomizer />}
     </div>
   );
 };
+

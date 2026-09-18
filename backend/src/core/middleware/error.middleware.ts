@@ -82,6 +82,27 @@ export function errorHandler(
     return;
   }
 
+  // 5. Database Not Connected / Mongoose disconnected error
+  if (
+    err.name === 'DisconnectedError' ||
+    err.name === 'MongooseServerSelectionError' ||
+    (err.name === 'MongooseError' && (
+      err.message.includes('initial connection is complete') ||
+      err.message.includes('buffering timed out') ||
+      err.message.includes('Client must be connected') ||
+      err.message.includes('topology was closed')
+    ))
+  ) {
+    res.status(503).json({
+      success: false,
+      error: {
+        code: 'DATABASE_NOT_CONNECTED',
+        message: 'MongoDB is currently not running or unreachable. Please start MongoDB locally, run Docker (docker compose up -d), or provide a free MongoDB Atlas connection string in .env (MONGODB_URI).',
+      },
+    });
+    return;
+  }
+
   // 5. Custom application error (with statusCode)
   const statusCode = err.statusCode || 500;
   const message = err.message || 'Internal Server Error';

@@ -108,6 +108,10 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
       pricingTiers: pricingTiers || [],
       customFields: customFields || {},
       isActive: true,
+      barcode: req.body.barcode,
+      stockQuantity: req.body.stockQuantity,
+      lowStockThreshold: req.body.lowStockThreshold,
+      manageInventory: req.body.manageInventory,
     });
 
     await logAuditEvent({

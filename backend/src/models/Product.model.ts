@@ -30,12 +30,17 @@ const ProductSchema = new Schema<IProductDoc>(
       },
     ],
     customFields: { type: Schema.Types.Mixed, default: {} },
+    barcode: { type: String, trim: true, sparse: true },
+    stockQuantity: { type: Number, default: 0 },
+    lowStockThreshold: { type: Number, default: 5 },
+    manageInventory: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true }
 );
 
 ProductSchema.index({ organizationId: 1, sku: 1 }, { unique: true });
+ProductSchema.index({ organizationId: 1, barcode: 1 });
 ProductSchema.index({ organizationId: 1, name: 1 });
 
 export const ProductModel = mongoose.model<IProductDoc>('Product', ProductSchema);

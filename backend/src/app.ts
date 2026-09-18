@@ -30,6 +30,16 @@ export function createApp(): Express {
   app.use(morgan('dev'));
   app.use(rateLimiter);
 
+  // Root Endpoint
+  app.get('/', (req, res) => {
+    res.json({
+      message: 'Adaptive AI-Powered Billing API Server is running',
+      frontendUrl: 'http://localhost:5173',
+      healthCheck: '/api/v1/health',
+      version: '1.1.0',
+    });
+  });
+
   // Health Check
   app.get('/api/v1/health', (req, res) => {
     res.json({

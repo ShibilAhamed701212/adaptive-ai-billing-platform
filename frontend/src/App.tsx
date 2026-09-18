@@ -8,13 +8,20 @@ import { DashboardPage } from './pages/dashboard/DashboardPage';
 import { InvoicesListPage } from './pages/invoices/InvoicesListPage';
 import { CreateInvoicePage } from './pages/invoices/CreateInvoicePage';
 import { InvoiceDetailPage } from './pages/invoices/InvoiceDetailPage';
+import { PaymentsPage } from './pages/payments/PaymentsPage';
+import { RecurringPage } from './pages/recurring/RecurringPage';
+import { CreditNotesPage } from './pages/credit-notes/CreditNotesPage';
+import { ApprovalsPage } from './pages/approvals/ApprovalsPage';
+import { ReportsPage } from './pages/reports/ReportsPage';
 import { CustomersPage } from './pages/customers/CustomersPage';
 import { ProductsPage } from './pages/products/ProductsPage';
 import { SettingsPage } from './pages/settings/SettingsPage';
+import { AuditLogsPage } from './pages/audit/AuditLogsPage';
+import { PointOfSalePage } from './pages/pos/PointOfSalePage';
 import { InvoiceCopilotDraft } from '@billing/shared';
 
 function RouterShell() {
-  const { user, isLoading } = useAuth();
+  const { user, organization, isLoading } = useAuth();
   const [currentPath, setCurrentPath] = useState<string>(() => window.location.pathname || '/dashboard');
   const [copilotDraft, setCopilotDraft] = useState<InvoiceCopilotDraft | null>(null);
 
@@ -27,6 +34,10 @@ function RouterShell() {
   }, []);
 
   const navigate = (path: string) => {
+    if (user && organization && !organization.isOnboarded && path !== '/onboarding') {
+      alert("Please complete the AI Business Architect setup first, or click 'Skip' at the bottom to continue with defaults.");
+      return;
+    }
     window.history.pushState({}, '', path);
     setCurrentPath(path);
   };
@@ -35,6 +46,12 @@ function RouterShell() {
     setCopilotDraft(draft);
     navigate('/invoices/create');
   };
+
+  useEffect(() => {
+    if (!isLoading && user && organization && !organization.isOnboarded && currentPath !== '/onboarding') {
+      navigate('/onboarding');
+    }
+  }, [user, organization, isLoading, currentPath]);
 
   if (isLoading) {
     return (
@@ -79,8 +96,28 @@ function RouterShell() {
       return <InvoiceDetailPage invoiceId={invoiceId} onNavigate={navigate} />;
     }
 
-    if (currentPath === '/invoices' || currentPath === '/payments') {
+    if (currentPath === '/invoices') {
       return <InvoicesListPage onNavigate={navigate} />;
+    }
+
+    if (currentPath === '/payments') {
+      return <PaymentsPage onNavigate={navigate} />;
+    }
+
+    if (currentPath === '/recurring') {
+      return <RecurringPage onNavigate={navigate} />;
+    }
+
+    if (currentPath === '/credit-notes') {
+      return <CreditNotesPage onNavigate={navigate} />;
+    }
+
+    if (currentPath === '/approvals') {
+      return <ApprovalsPage onNavigate={navigate} />;
+    }
+
+    if (currentPath === '/reports') {
+      return <ReportsPage />;
     }
 
     if (currentPath === '/customers') {
@@ -91,8 +128,34 @@ function RouterShell() {
       return <ProductsPage />;
     }
 
+    if (currentPath === '/pos') {
+      return <PointOfSalePage />;
+    }
+
     if (currentPath === '/settings') {
+      if (user?.role !== 'admin' && user?.role !== 'manager') {
+        return (
+          <div style={{ padding: '2rem', textAlign: 'center', marginTop: '10vh' }}>
+            <h2 style={{ color: 'var(--color-danger)' }}>Access Denied</h2>
+            <p>You do not have permission to view organizational settings.</p>
+            <button className="btn btn-secondary" onClick={() => navigate('/dashboard')} style={{ marginTop: '1rem' }}>Return to Dashboard</button>
+          </div>
+        );
+      }
       return <SettingsPage />;
+    }
+
+    if (currentPath === '/audit') {
+      if (user?.role !== 'admin') {
+        return (
+          <div style={{ padding: '2rem', textAlign: 'center', marginTop: '10vh' }}>
+            <h2 style={{ color: 'var(--color-danger)' }}>Access Denied</h2>
+            <p>Only administrators can view compliance and audit logs.</p>
+            <button className="btn btn-secondary" onClick={() => navigate('/dashboard')} style={{ marginTop: '1rem' }}>Return to Dashboard</button>
+          </div>
+        );
+      }
+      return <AuditLogsPage />;
     }
 
     return <DashboardPage onNavigate={navigate} />;

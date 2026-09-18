@@ -40,6 +40,7 @@ const OrganizationSchema = new Schema<IOrganizationDoc>(
       gstinOrTaxId: String,
       website: String,
     },
+    isOnboarded: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

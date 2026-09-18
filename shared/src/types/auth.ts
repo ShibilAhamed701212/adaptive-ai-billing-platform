@@ -41,6 +41,7 @@ export interface Organization {
   billingModel: BillingModelType;
   enabledModules: string[];
   settings: OrganizationSettings;
+  isOnboarded: boolean;
   createdAt: string;
   updatedAt: string;
 }

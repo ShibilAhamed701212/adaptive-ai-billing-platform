@@ -22,11 +22,15 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-primary)' }}>
       {/* Sidebar */}
-      <Sidebar currentPath={currentPath} onNavigate={onNavigate} />
+      <div className="no-print">
+        <Sidebar currentPath={currentPath} onNavigate={onNavigate} />
+      </div>
 
       {/* Main Content Area */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        <Navbar onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
+        <div className="no-print">
+          <Navbar onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
+        </div>
 
         <main style={{ flex: 1, padding: '2rem', overflowY: 'auto' }}>
           <div style={{ maxWidth: '1400px', margin: '0 auto' }}>{children}</div>
@@ -34,11 +38,14 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       </div>
 
       {/* Global AI Copilot Drawer */}
-      <AiCopilotDrawer
-        isOpen={isAiDrawerOpen}
-        onClose={() => setIsAiDrawerOpen(false)}
-        onApplyDraftToInvoice={onApplyDraftToInvoice}
-      />
+      <div className="no-print">
+        <AiCopilotDrawer
+          isOpen={isAiDrawerOpen}
+          onClose={() => setIsAiDrawerOpen(false)}
+          onApplyDraftToInvoice={onApplyDraftToInvoice}
+        />
+      </div>
     </div>
   );
 };
+

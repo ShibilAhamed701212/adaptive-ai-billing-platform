@@ -11,9 +11,11 @@ import { PaymentModel } from './models/Payment.model';
 import { calculateInvoice } from './billing-engine/calculators/invoice-calculator';
 import { ENV } from './config/env';
 
-async function seed() {
+async function seedDatabase() {
   console.log('🌱 Starting Database Seeding...');
-  await mongoose.connect(ENV.MONGODB_URI);
+  if (mongoose.connection.readyState !== 1) {
+    await mongoose.connect(ENV.MONGODB_URI);
+  }
 
   // Clear existing collections
   await Promise.all([
@@ -471,10 +473,30 @@ async function seed() {
   console.log(`Admin Login : admin@nexuscloud.io / Admin@123456`);
   console.log(`Accountant  : rajesh@nexuscloud.io / Admin@123456`);
   console.log('----------------------------------------------------');
-  process.exit(0);
+  return { org, admin };
 }
 
-seed().catch((err) => {
-  console.error('❌ Seeding failed:', err);
-  process.exit(1);
-});
+export async function autoSeedIfEmpty(): Promise<void> {
+  try {
+    if (mongoose.connection.readyState !== 1) return;
+    const userCount = await UserModel.countDocuments();
+    if (userCount === 0) {
+      console.log('🌱 Empty database detected. Auto-seeding initial demo data...');
+      await seedDatabase();
+      console.log('✨ Auto-seeding completed!');
+    }
+  } catch (err: any) {
+    console.warn('⚠️ Auto-seed check failed:', err.message);
+  }
+}
+
+export { seedDatabase };
+
+if (require.main === module || process.argv[1]?.includes('seed.ts')) {
+  seedDatabase()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      console.error('❌ Seeding failed:', err);
+      process.exit(1);
+    });
+}

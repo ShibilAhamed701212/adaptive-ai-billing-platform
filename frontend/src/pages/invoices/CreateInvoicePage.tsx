@@ -60,23 +60,32 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
   const [calculationPreview, setCalculationPreview] = useState<any>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [selectedTemplateName, setSelectedTemplateName] = useState<string>('Modern Corporate Invoice');
 
   // Load initial dropdown dependencies
   useEffect(() => {
     async function loadData() {
       try {
-        const [cRes, pRes] = await Promise.all([
+        const [cRes, pRes, tRes] = await Promise.all([
           apiRequest<Customer[]>('/customers'),
           apiRequest<Product[]>('/products'),
+          apiRequest<any[]>('/invoice-templates'),
         ]);
         if (cRes.success && cRes.data) setCustomers(cRes.data);
         if (pRes.success && pRes.data) setProducts(pRes.data);
+        if (tRes.success && tRes.data && tRes.data.length > 0) {
+          setTemplates(tRes.data);
+          const def = tRes.data.find((t) => t.isDefault) || tRes.data[0];
+          setSelectedTemplateName(def.templateName);
+        }
       } catch (e) {
-        console.error('Failed to load customers/products', e);
+        console.error('Failed to load customers/products/templates', e);
       }
     }
     loadData();
   }, []);
+
 
   // Handle Copilot Prefill
   useEffect(() => {
@@ -110,13 +119,17 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
   // Recalculate preview deterministically on change
   useEffect(() => {
     async function triggerPreview() {
-      if (items.length === 0) return;
+      const validItems = items.filter(i => i.description.trim().length > 0 && i.quantity > 0 && i.unitPrice >= 0);
+      if (validItems.length === 0) {
+        setCalculationPreview(null);
+        return;
+      }
       try {
         const res = await apiRequest('/invoices/preview', {
           method: 'POST',
           body: JSON.stringify({
             customerId: selectedCustomerId || undefined,
-            items,
+            items: validItems,
             invoiceDiscountAmount,
             customFields,
           }),
@@ -215,6 +228,51 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
     }
   };
 
+  const [isOcrProcessing, setIsOcrProcessing] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleOcrUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsOcrProcessing(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const res = await fetch('/api/v1/ai/ocr/upload', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: formData
+      });
+      
+      const data = await res.json();
+      if (data.success && data.data) {
+        // Populate fields
+        if (data.data.items && data.data.items.length > 0) {
+          setItems(data.data.items.map((it: any) => ({
+            description: it.description || '',
+            unit: 'unit',
+            quantity: it.quantity || 1,
+            unitPrice: it.unitPrice || 0,
+            discountAmount: 0,
+            taxRate: it.taxRate || 0,
+          })));
+        }
+      } else {
+        setError(data.error?.message || 'OCR parsing failed');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to process OCR document');
+    } finally {
+      setIsOcrProcessing(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const selectedCustomer = customers.find((c) => c._id === selectedCustomerId);
 
   return (
@@ -234,6 +292,21 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
         </div>
 
         <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <input 
+            type="file" 
+            accept="image/*,application/pdf" 
+            ref={fileInputRef} 
+            onChange={handleOcrUpload} 
+            style={{ display: 'none' }} 
+          />
+          <button 
+            className="btn btn-secondary" 
+            onClick={() => fileInputRef.current?.click()} 
+            disabled={isOcrProcessing || isSaving}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--accent-primary)', borderColor: 'var(--accent-primary)' }}
+          >
+            {isOcrProcessing ? 'Scanning...' : <><Sparkles size={16} /> Scan Bill</>}
+          </button>
           <button className="btn btn-secondary" onClick={() => handleSubmit('draft')} disabled={isSaving}>
             Save as Draft
           </button>
@@ -311,6 +384,31 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
                   onChange={(e) => setDueDate(e.target.value)}
                 />
                 <span className="element-desc">Payment deadline before overdue status triggers</span>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Invoice Template Layout</label>
+                <select
+                  className="form-select"
+                  value={selectedTemplateName}
+                  onChange={(e) => setSelectedTemplateName(e.target.value)}
+                >
+                  <optgroup label="Saved Templates">
+                    {templates.map((t) => (
+                      <option key={t._id} value={t.templateName}>
+                        {t.templateName} {t.isDefault ? '(Default)' : ''}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Default Layout Styles">
+                    <option value="Modern Tech">Modern Tech</option>
+                    <option value="Classic Corporate">Classic Corporate</option>
+                    <option value="GST Tax Master">GST Tax Master</option>
+                    <option value="Minimalist Slate">Minimalist Slate</option>
+                    <option value="POS Retail Receipt">POS Retail Receipt</option>
+                  </optgroup>
+                </select>
+                <span className="element-desc">Template layout for customer PDF/print view</span>
               </div>
             </div>
 
