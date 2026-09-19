@@ -11,8 +11,9 @@ async function bootstrap() {
   // Start background jobs
   startCronJobs();
 
-  const server = app.listen(ENV.PORT, () => {
-    console.log(`🚀 [Server] Adaptive Billing Platform API running on http://localhost:${ENV.PORT}`);
+  const port = Number(ENV.PORT) || 10000;
+  const server = app.listen(port, '0.0.0.0', () => {
+    console.log(`🚀 [Server] Adaptive Billing Platform API running on port ${port}`);
     console.log(`⚡ [Environment] Node Env: ${ENV.NODE_ENV}`);
   });
 

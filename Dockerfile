@@ -25,7 +25,7 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
-ENV PORT=8000
+ENV PORT=10000
 
 # Copy manifests for production install
 COPY package*.json ./
@@ -39,7 +39,7 @@ RUN npm ci --omit=dev
 COPY --from=builder /app/shared/dist ./shared/dist
 COPY --from=builder /app/backend/dist ./backend/dist
 
-EXPOSE 8000
+EXPOSE 10000
 
 WORKDIR /app/backend
 
