@@ -16,3 +16,4 @@ backend/.mongo_data/
 uploads/
 test-results/
 playwright-report/
+.freebuff/

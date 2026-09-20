@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: adaptive-billing-web
+    runtime: static
+    buildCommand: npm run build
+    staticPublishPath: frontend/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        value: https://adaptive-billing-api.onrender.com
+
+  - type: web
+    name: adaptive-billing-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    region: oregon
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
