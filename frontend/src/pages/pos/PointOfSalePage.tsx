@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { apiRequest } from '../../api/client';
+import { useAuth } from '../../context/AuthContext';
 import { Product, Customer } from '@billing/shared';
 import { ShoppingCart, ScanLine, X, Search, Check, Banknote, User, Tag, AlertTriangle, RefreshCw, Cloud } from 'lucide-react';
 import { CheckoutModal } from '../../components/pos/CheckoutModal';
@@ -49,6 +50,7 @@ function useBarcodeScanner(onScan: (code: string) => void, active: boolean = tru
 }
 
 export const PointOfSalePage: React.FC = () => {
+  const { organization } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [search, setSearch] = useState('');
@@ -207,10 +209,8 @@ export const PointOfSalePage: React.FC = () => {
 
   const openCheckout = () => {
     if (cart.length === 0) return;
-    if (!selectedCustomerId) {
-      alert("Please select a customer for this transaction.");
-      return;
-    }
+    // A walk-in (no customer) is allowed for fully-paid sales; the backend
+    // enforces that credit sales require a customer.
     setIsCheckoutModalOpen(true);
   };
 
@@ -245,10 +245,12 @@ export const PointOfSalePage: React.FC = () => {
         alert("You are offline. Sale queued and will sync when connection returns.");
         
         setReceiptData({
-          storeName: 'Offline Mode Store',
+          storeName: organization?.name || 'Store',
+          storeAddress: organization?.settings?.address?.city ? `${organization.settings.address.street || ''} ${organization.settings.address.city}`.trim() : undefined,
+          gstin: organization?.settings?.gstinOrTaxId,
           invoiceNumber: `OFFLINE-${Date.now()}`,
           date: new Date().toLocaleString(),
-          customerName: customers.find(c => c._id === selectedCustomerId)?.name || 'Walk-in',
+          customerName: customers.find(c => c._id === selectedCustomerId)?.name || 'Walk-in Customer',
           items: cart.map(c => ({
             name: c.name,
             quantity: c.cartQuantity,
@@ -277,8 +279,11 @@ export const PointOfSalePage: React.FC = () => {
         if (res.success) {
           const inv = res.data.invoice;
           setReceiptData({
-            storeName: 'Adaptive AI Retail',
-            gstin: '29ABCDE1234F1Z5',
+            storeName: organization?.name || 'Store',
+            storeAddress: organization?.settings?.address?.city
+              ? `${organization.settings.address.street || ''} ${organization.settings.address.city}`.trim()
+              : undefined,
+            gstin: organization?.settings?.gstinOrTaxId,
             invoiceNumber: inv.invoiceNumber,
             date: new Date(inv.issueDate).toLocaleString(),
             customerName: inv.customerSnapshot?.name,
@@ -437,7 +442,7 @@ export const PointOfSalePage: React.FC = () => {
 
         <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-            <User size={14} /> Assign Customer *
+            <User size={14} /> Assign customer (optional — walk-in allowed)
           </label>
           <select 
             className="form-select"

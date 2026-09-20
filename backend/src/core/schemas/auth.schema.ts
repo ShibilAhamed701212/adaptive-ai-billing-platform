@@ -5,7 +5,8 @@ export const registerSchema = z.object({
   email: z.string().email('Invalid email address').toLowerCase().trim(),
   password: z.string().min(8, 'Password must be at least 8 characters').max(128),
   organizationName: z.string().min(2, 'Organization name is required').max(200).trim(),
-  billingModel: z.enum(['retail', 'subscription', 'usage_based', 'rental', 'professional_services', 'healthcare', 'logistics', 'custom']).optional().default('retail'),
+  billingModel: z.enum(['retail', 'subscription', 'usage_based', 'rental', 'professional_services', 'healthcare', 'logistics', 'custom']).optional(),
+  businessType: z.enum(['retail', 'saas', 'services', 'general']).optional(),
 });
 
 export const loginSchema = z.object({

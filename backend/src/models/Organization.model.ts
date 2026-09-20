@@ -18,6 +18,11 @@ const OrganizationSchema = new Schema<IOrganizationDoc>(
       type: [String],
       default: ['invoices', 'customers', 'products', 'payments', 'reports', 'ai_copilot'],
     },
+    businessType: {
+      type: String,
+      enum: ['retail', 'saas', 'services', 'general'],
+      default: 'general',
+    },
     settings: {
       currency: { type: String, default: 'INR' },
       currencySymbol: { type: String, default: '₹' },
@@ -41,6 +46,11 @@ const OrganizationSchema = new Schema<IOrganizationDoc>(
       website: String,
     },
     isOnboarded: { type: Boolean, default: false },
+    onboarding: {
+      currentStep: { type: Number, default: 1 },
+      completedSteps: { type: [String], default: [] },
+      skipped: { type: Boolean, default: false },
+    },
   },
   { timestamps: true }
 );

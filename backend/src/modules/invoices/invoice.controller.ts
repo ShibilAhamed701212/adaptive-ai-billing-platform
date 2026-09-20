@@ -86,7 +86,10 @@ export async function calculatePreview(req: Request, res: Response, next: NextFu
 
     let customerState: string | undefined;
     if (customerId) {
-      const customer = await CustomerModel.findById(customerId);
+      const customer = await CustomerModel.findOne({
+        _id: customerId,
+        organizationId: new mongoose.Types.ObjectId(orgId),
+      });
       customerState = customer?.billingAddress?.state;
     }
 

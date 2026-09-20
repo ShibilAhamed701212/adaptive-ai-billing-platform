@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../api/client';
+import { useAuth } from '../../context/AuthContext';
 import { DashboardSummary } from '@billing/shared';
 import {
   TrendingUp,
@@ -12,23 +13,61 @@ import {
   Calendar,
   Users,
   CheckCircle2,
+  Rocket,
+  ArrowRight,
 } from 'lucide-react';
 
 interface DashboardPageProps {
   onNavigate: (path: string) => void;
 }
 
+interface ChecklistState {
+  profile: boolean;
+  modules: boolean;
+  product: boolean;
+  customer: boolean;
+  invoice: boolean;
+  team: boolean;
+}
+
 export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
+  const { organization, user } = useAuth();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [checklist, setChecklist] = useState<ChecklistState>({
+    profile: false,
+    modules: false,
+    product: false,
+    customer: false,
+    invoice: false,
+    team: false,
+  });
 
   useEffect(() => {
     async function loadData() {
       try {
-        const res = await apiRequest<DashboardSummary>('/reports/dashboard-summary');
-        if (res.success && res.data) {
-          setSummary(res.data);
-        }
+        const [sumRes, prodRes, custRes, invRes, userRes] = await Promise.all([
+          apiRequest<DashboardSummary>('/reports/dashboard-summary'),
+          apiRequest<any>('/products?limit=1'),
+          apiRequest<any>('/customers?limit=1'),
+          apiRequest<any>('/invoices?limit=1'),
+          apiRequest<any>('/users'),
+        ]);
+        if (sumRes.success && sumRes.data) setSummary(sumRes.data);
+
+        const productCount = prodRes.success ? prodRes.pagination?.total ?? prodRes.data?.length ?? 0 : 0;
+        const customerCount = custRes.success ? custRes.pagination?.total ?? custRes.data?.length ?? 0 : 0;
+        const invoiceCount = invRes.success ? invRes.pagination?.total ?? invRes.data?.length ?? 0 : 0;
+        const teamCount = userRes.success && Array.isArray(userRes.data) ? userRes.data.length : 0;
+
+        setChecklist({
+          profile: Boolean(organization?.settings?.address?.city || organization?.settings?.gstinOrTaxId),
+          modules: Boolean(organization?.enabledModules?.length),
+          product: productCount > 0,
+          customer: customerCount > 0,
+          invoice: invoiceCount > 0,
+          team: teamCount > 1,
+        });
       } catch (e) {
         console.error(e);
       } finally {
@@ -36,6 +75,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
       }
     }
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (loading) {
@@ -55,11 +95,52 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       {/* Page Title & Context Header */}
       <div>
-        <h1 style={{ fontSize: '1.75rem', marginBottom: '0.25rem' }}>Executive Dashboard</h1>
+        <h1 style={{ fontSize: '1.75rem', marginBottom: '0.25rem' }}>{organization?.name || 'Dashboard'}</h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          Real-time billing performance, AI cashflow projections, anomaly detection, and accounts receivable overview.
+          Welcome back, {user?.name}. Real-time billing performance, cashflow projections, and receivables overview.
         </p>
       </div>
+
+      {/* Setup checklist */}
+      {!checklist.invoice && (
+        <div className="glass-panel" style={{ padding: '1.5rem', border: '1px solid #c7d2fe' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem' }}>
+            <Rocket size={18} color="var(--accent-primary)" />
+            <h3 style={{ fontSize: '1.1rem', margin: 0 }}>Set up your organization</h3>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.5rem' }}>
+            {[
+              { key: 'profile', label: 'Complete business profile', path: '/settings', done: checklist.profile },
+              { key: 'modules', label: 'Choose your modules', path: '/settings', done: checklist.modules },
+              { key: 'product', label: 'Add your first product', path: '/products', done: checklist.product },
+              { key: 'customer', label: 'Add your first customer', path: '/customers', done: checklist.customer },
+              { key: 'invoice', label: 'Create your first invoice', path: '/invoices', done: checklist.invoice },
+              { key: 'team', label: 'Invite a team member', path: '/team', done: checklist.team },
+            ].map((item) => (
+              <button
+                key={item.key}
+                onClick={() => onNavigate(item.path)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.6rem',
+                  background: item.done ? '#f0fdf4' : '#f8fafc',
+                  border: `1px solid ${item.done ? '#bbf7d0' : '#e2e8f0'}`,
+                  borderRadius: 'var(--radius-md)',
+                  padding: '0.7rem 0.85rem',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+              >
+                {item.done ? <CheckCircle2 size={16} color="var(--color-success)" /> : <ArrowRight size={16} color="var(--accent-primary)" />}
+                <span style={{ fontSize: '0.82rem', fontWeight: 600, color: item.done ? 'var(--text-muted)' : 'var(--text-primary)', textDecoration: item.done ? 'line-through' : 'none' }}>
+                  {item.label}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* AI Daily Briefing Banner */}
       {brief && (

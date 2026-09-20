@@ -39,9 +39,28 @@ export interface Organization {
   name: string;
   slug: string;
   billingModel: BillingModelType;
+  businessType?: 'retail' | 'saas' | 'services' | 'general';
   enabledModules: string[];
   settings: OrganizationSettings;
   isOnboarded: boolean;
+  onboarding?: {
+    currentStep?: number;
+    completedSteps?: string[];
+    skipped?: boolean;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type MembershipStatus = 'active' | 'invited' | 'disabled';
+
+export interface Membership {
+  _id: string;
+  userId: string;
+  organizationId: string;
+  organization?: Organization;
+  role: UserRole;
+  status: MembershipStatus;
   createdAt: string;
   updatedAt: string;
 }

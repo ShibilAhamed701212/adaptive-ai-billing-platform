@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { tenantMiddleware, requireRole } from '../../core/tenancy/tenant.middleware';
+import { tenantMiddleware, requireRole, requireModule } from '../../core/tenancy/tenant.middleware';
 import {
   getCurrentShift,
   openShift,
@@ -10,6 +10,7 @@ import {
 const router = Router();
 
 router.use(tenantMiddleware);
+router.use(requireModule('shifts'));
 
 router.get('/current', getCurrentShift);
 router.post('/open', openShift);

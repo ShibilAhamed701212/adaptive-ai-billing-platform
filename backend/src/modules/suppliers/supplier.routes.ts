@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { tenantMiddleware, requireRole } from '../../core/tenancy/tenant.middleware';
+import { tenantMiddleware, requireRole, requireModule } from '../../core/tenancy/tenant.middleware';
 import {
   listSuppliers,
   createSupplier,
@@ -10,6 +10,7 @@ import {
 const router = Router();
 
 router.use(tenantMiddleware);
+router.use(requireModule('suppliers'));
 
 router.get('/', listSuppliers);
 router.post('/', requireRole(['admin', 'manager', 'accountant']), createSupplier);

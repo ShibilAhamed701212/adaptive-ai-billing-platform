@@ -29,7 +29,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       {/* Main Content Area */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <div className="no-print">
-          <Navbar onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
+          <Navbar onOpenAiDrawer={() => setIsAiDrawerOpen(true)} onNavigate={onNavigate} />
         </div>
 
         <main style={{ flex: 1, padding: '2rem', overflowY: 'auto' }}>

@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import { OrganizationModel } from './models/Organization.model';
 import { UserModel } from './models/User.model';
+import { MembershipModel } from './models/Membership.model';
 import { CustomerModel } from './models/Customer.model';
 import { ProductModel } from './models/Product.model';
 import { CustomFieldModel } from './models/CustomField.model';
@@ -27,6 +28,7 @@ async function seedDatabase() {
     BusinessRuleModel.deleteMany({}),
     InvoiceModel.deleteMany({}),
     PaymentModel.deleteMany({}),
+    MembershipModel.deleteMany({}),
   ]);
 
   // 1. Create Demo Organization: Nexus Cloud Solutions (SaaS & Services)
@@ -34,7 +36,24 @@ async function seedDatabase() {
     name: 'Nexus Cloud Technologies',
     slug: 'nexus-cloud',
     billingModel: 'subscription',
-    enabledModules: ['invoices', 'customers', 'products', 'payments', 'subscriptions', 'reports', 'ai_copilot'],
+    businessType: 'saas',
+    isOnboarded: true,
+    enabledModules: [
+      'invoices',
+      'customers',
+      'products',
+      'payments',
+      'subscriptions',
+      'reports',
+      'ai_copilot',
+      'pos',
+      'inventory',
+      'purchases',
+      'suppliers',
+      'returns',
+      'shifts',
+      'expenses',
+    ],
     settings: {
       currency: 'INR',
       currencySymbol: '₹',
@@ -70,7 +89,7 @@ async function seedDatabase() {
     isActive: true,
   });
 
-  await UserModel.create({
+  const accountant = await UserModel.create({
     organizationId: org._id,
     name: 'Rajesh Kumar (Finance)',
     email: 'rajesh@nexuscloud.io',
@@ -78,6 +97,11 @@ async function seedDatabase() {
     role: 'accountant',
     isActive: true,
   });
+
+  await MembershipModel.create([
+    { userId: admin._id, organizationId: org._id, role: 'admin', status: 'active' },
+    { userId: accountant._id, organizationId: org._id, role: 'accountant', status: 'active' },
+  ]);
 
   // 3. Create Custom Fields for Org
   await CustomFieldModel.create([

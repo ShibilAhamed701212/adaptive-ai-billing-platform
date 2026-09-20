@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest } from '../../api/client';
 import { Sparkles, ArrowRight, Layers } from 'lucide-react';
-import { BillingModelType } from '@billing/shared';
+import { BusinessType, BUSINESS_TYPE_LABELS } from '@billing/shared';
 
 interface RegisterPageProps {
   onNavigate: (path: string) => void;
@@ -14,7 +14,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
   const [name, setName] = useState<string>('');
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
-  const [billingModel, setBillingModel] = useState<BillingModelType>('subscription');
+  const [businessType, setBusinessType] = useState<BusinessType>('saas');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,11 +26,11 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
     try {
       const res = await apiRequest('/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ organizationName, name, email, password, billingModel }),
+        body: JSON.stringify({ organizationName, name, email, password, businessType }),
       });
 
       if (res.success && res.data) {
-        login(res.data.token, res.data.user, res.data.organization);
+        login(res.data.token, res.data.user, res.data.organization, res.data.memberships || []);
         onNavigate('/onboarding');
       } else {
         setError(res.error?.message || 'Registration failed');
@@ -79,9 +79,9 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
           >
             <Sparkles size={24} color="#fff" />
           </div>
-          <h1 style={{ fontSize: '1.6rem', marginBottom: '0.3rem' }}>Create Organization</h1>
+          <h1 style={{ fontSize: '1.6rem', marginBottom: '0.3rem' }}>Create your organization</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-            Instant AI onboarding & dynamic schema setup
+            Set up your business and start billing
           </p>
         </div>
 
@@ -153,18 +153,16 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
 
           <div className="form-group">
             <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <Layers size={14} color="var(--accent-secondary)" /> Initial Billing Model
+              <Layers size={14} color="var(--accent-secondary)" /> Business type
             </label>
             <select
               className="form-select"
-              value={billingModel}
-              onChange={(e) => setBillingModel(e.target.value as BillingModelType)}
+              value={businessType}
+              onChange={(e) => setBusinessType(e.target.value as BusinessType)}
             >
-              <option value="subscription">SaaS & Recurring Subscriptions</option>
-              <option value="retail">Retail & Point-of-Sale</option>
-              <option value="rental">Rental & Equipment Leasing</option>
-              <option value="logistics">Logistics & Freight Billing</option>
-              <option value="professional_services">Professional Services & Consulting</option>
+              {(Object.keys(BUSINESS_TYPE_LABELS) as BusinessType[]).map((bt) => (
+                <option key={bt} value={bt}>{BUSINESS_TYPE_LABELS[bt]}</option>
+              ))}
             </select>
           </div>
 

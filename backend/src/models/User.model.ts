@@ -23,7 +23,8 @@ const UserSchema = new Schema<IUserDoc>(
   { timestamps: true }
 );
 
-// Unique email per organization
-UserSchema.index({ organizationId: 1, email: 1 }, { unique: true });
+// Email is globally unique so login deterministically identifies a single user.
+// Organizational access is expressed through the Membership collection.
+UserSchema.index({ email: 1 }, { unique: true });
 
 export const UserModel = mongoose.model<IUserDoc>('User', UserSchema);

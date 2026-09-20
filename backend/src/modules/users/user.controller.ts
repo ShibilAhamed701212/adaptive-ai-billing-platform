@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 import { UserModel } from '../../models/User.model';
+import { MembershipModel } from '../../models/Membership.model';
 import { logAuditEvent } from '../../core/audit/audit.service';
 
 export async function listUsers(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -26,13 +27,14 @@ export async function createUser(req: Request, res: Response, next: NextFunction
       return;
     }
 
-    const existing = await UserModel.findOne({
-      organizationId: new mongoose.Types.ObjectId(orgId),
-      email: email.toLowerCase().trim(),
-    });
+    // Email is globally unique across the platform.
+    const existing = await UserModel.findOne({ email: email.toLowerCase().trim() });
 
     if (existing) {
-      res.status(409).json({ success: false, error: { code: 'USER_EXISTS', message: 'A team member with this email already exists' } });
+      res.status(409).json({
+        success: false,
+        error: { code: 'USER_EXISTS', message: 'An account with this email already exists' },
+      });
       return;
     }
 
@@ -46,6 +48,14 @@ export async function createUser(req: Request, res: Response, next: NextFunction
       passwordHash,
       role: role || 'viewer',
       isActive: true,
+    });
+
+    // A membership is the source of truth for organization access + role.
+    await MembershipModel.create({
+      userId: user._id,
+      organizationId: new mongoose.Types.ObjectId(orgId),
+      role: role || 'viewer',
+      status: 'active',
     });
 
     await logAuditEvent({
@@ -99,6 +109,18 @@ export async function updateUser(req: Request, res: Response, next: NextFunction
     }
 
     await user.save();
+
+    // Keep the organization membership role in sync with the user record.
+    await MembershipModel.updateOne(
+      { userId: user._id, organizationId: new mongoose.Types.ObjectId(orgId) },
+      {
+        ...(role ? { role } : {}),
+        ...(isActive !== undefined ? { status: isActive ? 'active' : 'disabled' } : {}),
+        userId: user._id,
+        organizationId: new mongoose.Types.ObjectId(orgId),
+      },
+      { upsert: true }
+    );
 
     await logAuditEvent({
       organizationId: orgId,

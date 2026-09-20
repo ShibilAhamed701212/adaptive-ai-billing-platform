@@ -15,12 +15,12 @@ import {
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } }); // 5MB limit
 
+// All AI operations (including onboarding assistance) require an authenticated tenant session.
+router.use(tenantMiddleware);
+
 // Onboarding model suggestions & conversational interview
 router.post('/onboarding/suggest-model', suggestModelOnboarding);
 router.post('/onboarding/interview', interactiveOnboardingInterview);
-
-// Authenticated AI operations
-router.use(tenantMiddleware);
 router.post('/copilot/draft-invoice', draftInvoiceCopilot);
 router.post('/copilot/draft', draftInvoiceCopilot);
 router.post('/ask-business', askBusiness);

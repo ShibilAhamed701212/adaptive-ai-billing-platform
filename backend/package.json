@@ -7,9 +7,11 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "seed": "tsx src/seed.ts",
+    "migrate:memberships": "tsx src/migrations/backfill-memberships.ts",
     "test": "tsx src/billing-engine/calculators/invoice-calculator.test.ts",
     "test:pos": "ts-node src/tests/pos.e2e.test.ts",
     "test:integration": "ts-node src/tests/pos.integration.test.ts",
+    "test:saas": "ts-node src/tests/saas-flow.test.ts",
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {

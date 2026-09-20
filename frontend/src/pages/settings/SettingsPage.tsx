@@ -32,9 +32,19 @@ export const SettingsPage: React.FC = () => {
   const [isAddingRule, setIsAddingRule] = useState<boolean>(false);
 
   // Org Settings State
+  const [orgName, setOrgName] = useState<string>(organization?.name || '');
+  const [businessType, setBusinessType] = useState<string>(organization?.businessType || 'general');
   const [invoicePrefix, setInvoicePrefix] = useState<string>(organization?.settings?.invoicePrefix || 'INV');
   const [taxSystem, setTaxSystem] = useState<string>(organization?.settings?.taxSystem || 'GST');
   const [paymentTermsDays, setPaymentTermsDays] = useState<number>(organization?.settings?.paymentTermsDays || 30);
+  const [currency, setCurrency] = useState<string>(organization?.settings?.currency || 'INR');
+  const [timezone, setTimezone] = useState<string>(organization?.settings?.timezone || 'Asia/Kolkata');
+  const [gstin, setGstin] = useState<string>(organization?.settings?.gstinOrTaxId || '');
+  const [street, setStreet] = useState<string>(organization?.settings?.address?.street || '');
+  const [city, setCity] = useState<string>(organization?.settings?.address?.city || '');
+  const [stateName, setStateName] = useState<string>(organization?.settings?.address?.state || '');
+  const [postalCode, setPostalCode] = useState<string>(organization?.settings?.address?.postalCode || '');
+  const [country, setCountry] = useState<string>(organization?.settings?.address?.country || 'India');
   const [isSavingOrg, setIsSavingOrg] = useState<boolean>(false);
   const [orgSuccess, setOrgSuccess] = useState<boolean>(false);
 
@@ -145,11 +155,17 @@ export const SettingsPage: React.FC = () => {
       const res = await apiRequest('/organizations/settings', {
         method: 'PATCH',
         body: JSON.stringify({
+          name: orgName || undefined,
+          businessType,
           settings: {
             ...organization?.settings,
             invoicePrefix,
             taxSystem,
             paymentTermsDays: Number(paymentTermsDays),
+            currency,
+            timezone,
+            gstinOrTaxId: gstin,
+            address: { street, city, state: stateName, postalCode, country },
           },
         }),
       });
@@ -486,8 +502,8 @@ export const SettingsPage: React.FC = () => {
       {/* Tab 3: Organization & Tax Preferences */}
       {activeTab === 'org' && (
         <div className="glass-panel" style={{ padding: '2rem', maxWidth: '650px' }}>
-          <h3 style={{ fontSize: '1.15rem', margin: '0 0 0.25rem' }}>Tenant Billing & Tax System</h3>
-          <p className="section-lead">Global defaults applied to all issued invoices and statutory tax schedules.</p>
+          <h3 style={{ fontSize: '1.15rem', margin: '0 0 0.25rem' }}>Organization Profile</h3>
+          <p className="section-lead">Business identity, address, and global billing/tax defaults for this organization.</p>
 
           {orgSuccess && (
             <div
@@ -508,15 +524,65 @@ export const SettingsPage: React.FC = () => {
 
           <form onSubmit={handleSaveOrgSettings} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             <div className="form-group">
-              <label className="form-label">Invoice Number Prefix</label>
-              <input
-                type="text"
-                className="form-input"
-                value={invoicePrefix}
-                onChange={(e) => setInvoicePrefix(e.target.value)}
-                placeholder="INV"
-              />
-              <span className="element-desc">Pre-pended to all sequential invoice numbers (e.g. INV-2026-1001)</span>
+              <label className="form-label">Organization name</label>
+              <input type="text" className="form-input" value={orgName} onChange={(e) => setOrgName(e.target.value)} />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <div className="form-group">
+                <label className="form-label">Business type</label>
+                <select className="form-select" value={businessType} onChange={(e) => setBusinessType(e.target.value)}>
+                  <option value="retail">Retail / Supermarket</option>
+                  <option value="saas">SaaS / Subscription</option>
+                  <option value="services">Agency / Professional Services</option>
+                  <option value="general">General Business</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Currency</label>
+                <input type="text" className="form-input" value={currency} onChange={(e) => setCurrency(e.target.value)} placeholder="INR / USD / EUR" />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Timezone</label>
+              <input type="text" className="form-input" value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="Asia/Kolkata" />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <div className="form-group">
+                <label className="form-label">GSTIN / Tax ID</label>
+                <input type="text" className="form-input" value={gstin} onChange={(e) => setGstin(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Invoice number prefix</label>
+                <input type="text" className="form-input" value={invoicePrefix} onChange={(e) => setInvoicePrefix(e.target.value)} placeholder="INV" />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Street address</label>
+              <input type="text" className="form-input" value={street} onChange={(e) => setStreet(e.target.value)} />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+              <div className="form-group">
+                <label className="form-label">City</label>
+                <input type="text" className="form-input" value={city} onChange={(e) => setCity(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">State</label>
+                <input type="text" className="form-input" value={stateName} onChange={(e) => setStateName(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Postal code</label>
+                <input type="text" className="form-input" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Country</label>
+              <input type="text" className="form-input" value={country} onChange={(e) => setCountry(e.target.value)} />
             </div>
 
             <div className="form-group">
@@ -527,7 +593,6 @@ export const SettingsPage: React.FC = () => {
                 <option value="SALES_TAX">State Sales Tax (US)</option>
                 <option value="NONE">Tax Exempt (0% Flat)</option>
               </select>
-              <span className="element-desc">Determines tax calculation formulas across all studio lines</span>
             </div>
 
             <div className="form-group">
@@ -538,11 +603,10 @@ export const SettingsPage: React.FC = () => {
                 value={paymentTermsDays}
                 onChange={(e) => setPaymentTermsDays(parseInt(e.target.value, 10) || 30)}
               />
-              <span className="element-desc">Default days offset between invoice issue date and payment due date</span>
             </div>
 
             <button type="submit" className="btn btn-primary" disabled={isSavingOrg} style={{ alignSelf: 'flex-start' }}>
-              <CheckCircle2 size={16} /> Save Tenant Settings
+              <CheckCircle2 size={16} /> Save organization settings
             </button>
           </form>
         </div>

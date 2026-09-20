@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest } from '../../api/client';
-import { Sparkles, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Sparkles, ArrowRight } from 'lucide-react';
 
 interface LoginPageProps {
   onNavigate: (path: string) => void;
@@ -9,8 +9,8 @@ interface LoginPageProps {
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
   const { login } = useAuth();
-  const [email, setEmail] = useState<string>('admin@nexuscloud.io');
-  const [password, setPassword] = useState<string>('Admin@123456');
+  const [email, setEmail] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,7 +26,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
       });
 
       if (res.success && res.data) {
-        login(res.data.token, res.data.user, res.data.organization);
+        login(res.data.token, res.data.user, res.data.organization, res.data.memberships || []);
         onNavigate('/dashboard');
       } else {
         setError(res.error?.message || 'Login failed');
@@ -142,31 +142,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
           </button>
         </form>
 
-        {/* Demo Creds helper */}
-        <div
-          style={{
-            marginTop: '1.5rem',
-            padding: '0.9rem',
-            background: 'rgba(99, 102, 241, 0.08)',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid rgba(99, 102, 241, 0.2)',
-            fontSize: '0.78rem',
-            color: '#c7d2fe',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, marginBottom: '0.3rem' }}>
-            <ShieldCheck size={14} /> Preloaded Demo Credentials:
-          </div>
-          <div>Admin: <code>admin@nexuscloud.io</code> / <code>Admin@123456</code></div>
-        </div>
-
         <div style={{ textAlign: 'center', marginTop: '1.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
           Need a new organization?{' '}
           <button
             onClick={() => onNavigate('/register')}
             style={{ background: 'none', border: 'none', color: 'var(--accent-secondary)', fontWeight: 600, cursor: 'pointer' }}
           >
-            Register Tenant
+            Create organization
           </button>
         </div>
       </div>

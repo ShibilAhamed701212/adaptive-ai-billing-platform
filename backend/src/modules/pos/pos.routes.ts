@@ -1,11 +1,12 @@
 import { Router } from 'express';
-import { tenantMiddleware } from '../../core/tenancy/tenant.middleware';
+import { tenantMiddleware, requireModule } from '../../core/tenancy/tenant.middleware';
 import { posCheckout } from './pos.controller';
 import { listHeldBills, holdBill, restoreHeldBill, deleteHeldBill } from './held-bills.controller';
 
 const router = Router();
 
 router.use(tenantMiddleware);
+router.use(requireModule('pos'));
 
 router.post('/checkout', posCheckout);
 router.get('/held-bills', listHeldBills);

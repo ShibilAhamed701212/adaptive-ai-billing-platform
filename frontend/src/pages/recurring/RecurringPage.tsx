@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../api/client';
+import { useToast } from '../../components/common/Toast';
 import { RecurringProfile, Customer, Product } from '@billing/shared';
 import {
   Repeat,
@@ -21,6 +22,7 @@ interface RecurringPageProps {
 }
 
 export const RecurringPage: React.FC<RecurringPageProps> = ({ onNavigate }) => {
+  const { show } = useToast();
   const [profiles, setProfiles] = useState<RecurringProfile[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -30,7 +32,7 @@ export const RecurringPage: React.FC<RecurringPageProps> = ({ onNavigate }) => {
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [profileName, setProfileName] = useState<string>('');
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
-  const [frequency, setFrequency] = useState<'weekly' | 'monthly' | 'quarterly' | 'yearly'>('monthly');
+  const [frequency, setFrequency] = useState<'weekly' | 'monthly' | 'quarterly' | 'annual'>('monthly');
   const [startDate, setStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [autoSend, setAutoSend] = useState<boolean>(true);
   const [items, setItems] = useState<
@@ -95,13 +97,16 @@ export const RecurringPage: React.FC<RecurringPageProps> = ({ onNavigate }) => {
 
       if (res.success) {
         confetti({ particleCount: 90, spread: 60 });
+        show('Recurring profile created', 'success');
         setIsModalOpen(false);
         setProfileName('');
         setSelectedCustomerId('');
         loadData();
+      } else {
+        show(res.error?.message || 'Failed to create recurring profile', 'error');
       }
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      show(err.message || 'Failed to create recurring profile', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -116,14 +121,17 @@ export const RecurringPage: React.FC<RecurringPageProps> = ({ onNavigate }) => {
 
       if (res.success && res.data) {
         confetti({ particleCount: 100, spread: 70 });
+        show('Recurring invoice generated', 'success');
         loadData();
         const invoiceId = res.data._id || res.data.invoice?._id;
         if (onNavigate && invoiceId) {
           onNavigate(`/invoices/${invoiceId}`);
         }
+      } else {
+        show(res.error?.message || 'Failed to generate recurring invoice', 'error');
       }
-    } catch (err) {
-      console.error('Failed to trigger recurring generation', err);
+    } catch (err: any) {
+      show(err.message || 'Failed to trigger recurring generation', 'error');
     } finally {
       setTriggeringId(null);
     }
@@ -134,14 +142,17 @@ export const RecurringPage: React.FC<RecurringPageProps> = ({ onNavigate }) => {
     const nextStatus = profile.status === 'active' ? 'paused' : 'active';
     try {
       const res = await apiRequest(`/recurring/${profile._id}`, {
-        method: 'PUT',
+        method: 'PATCH',
         body: JSON.stringify({ status: nextStatus }),
       });
       if (res.success) {
+        show(`Profile ${nextStatus}`, 'success');
         loadData();
+      } else {
+        show(res.error?.message || 'Failed to update profile', 'error');
       }
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      show(err.message || 'Failed to update profile', 'error');
     }
   };
 
@@ -370,7 +381,7 @@ export const RecurringPage: React.FC<RecurringPageProps> = ({ onNavigate }) => {
                     <option value="weekly">Weekly</option>
                     <option value="monthly">Monthly</option>
                     <option value="quarterly">Quarterly</option>
-                    <option value="yearly">Annual (Yearly)</option>
+                    <option value="annual">Annual (Yearly)</option>
                   </select>
                 </div>
               </div>

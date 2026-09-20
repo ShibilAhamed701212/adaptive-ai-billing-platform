@@ -1,4 +1,5 @@
 export * from './types/auth';
+export * from './types/modules';
 export * from './types/customer';
 export * from './types/product';
 export * from './types/invoice';

@@ -1,12 +1,14 @@
 import React from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Sparkles, Building2, LogOut } from 'lucide-react';
+import { OrganizationSwitcher } from './OrganizationSwitcher';
+import { Sparkles, LogOut } from 'lucide-react';
 
 interface NavbarProps {
   onOpenAiDrawer: () => void;
+  onNavigate: (path: string) => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ onOpenAiDrawer }) => {
+export const Navbar: React.FC<NavbarProps> = ({ onOpenAiDrawer, onNavigate }) => {
   const { user, organization, logout } = useAuth();
 
   return (
@@ -25,24 +27,14 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAiDrawer }) => {
         boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.03)',
       }}
     >
-      {/* Left: Organization & Model indicator */}
+      {/* Left: Organization context */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-          <Building2 size={20} color="var(--accent-primary)" />
-          <div>
-            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
-              {organization?.name || 'Adaptive Billing'}
-            </div>
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-              Active Tenant Workspace
-            </div>
-          </div>
-        </div>
+        <OrganizationSwitcher onNavigate={onNavigate} />
 
-        {organization?.billingModel && (
+        {organization?.businessType && (
           <span
             style={{
-              fontSize: '0.75rem',
+              fontSize: '0.72rem',
               fontWeight: 600,
               background: '#e0e7ff',
               color: '#3730a3',
@@ -52,18 +44,18 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAiDrawer }) => {
               textTransform: 'capitalize',
             }}
           >
-            Model: {organization.billingModel.replace('_', ' ')}
+            {organization.businessType}
           </span>
         )}
       </div>
 
-      {/* Right: AI Copilot Quick Action + User Info */}
+      {/* Right: AI Copilot + User */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
         <button
           className="btn btn-primary"
           onClick={onOpenAiDrawer}
           style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.55rem 1.1rem' }}
-          title="Open AI Natural-Language Invoice Copilot & Business Assistant"
+          title="Open AI Copilot"
         >
           <Sparkles size={16} />
           <span>Ask AI Copilot</span>
@@ -73,13 +65,13 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAiDrawer }) => {
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>{user?.name}</div>
             <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>
-              {user?.role} • {organization?.settings?.taxSystem || 'GST'} Tax Active
+              {user?.role} • {organization?.settings?.taxSystem || 'GST'} Tax
             </div>
           </div>
           <button
             className="btn btn-ghost btn-sm"
             onClick={logout}
-            title="Sign out of tenant workspace"
+            title="Sign out"
             style={{ color: 'var(--color-danger)' }}
           >
             <LogOut size={16} />

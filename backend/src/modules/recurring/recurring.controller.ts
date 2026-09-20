@@ -5,6 +5,23 @@ import { CustomerModel } from '../../models/Customer.model';
 import { executeRecurringProfileGeneration } from '../../jobs/recurring-invoice.job';
 import { logAuditEvent } from '../../core/audit/audit.service';
 
+const FREQUENCY_ALIASES: Record<string, string> = {
+  yearly: 'annual',
+  annually: 'annual',
+  'semi-annual': 'semi_annual',
+  semiannual: 'semi_annual',
+  'half-yearly': 'semi_annual',
+};
+
+const VALID_FREQUENCIES = ['daily', 'weekly', 'biweekly', 'monthly', 'quarterly', 'semi_annual', 'annual'];
+
+function normalizeFrequency(frequency: any): string | undefined {
+  if (!frequency) return undefined;
+  const key = String(frequency).toLowerCase().trim();
+  const normalized = FREQUENCY_ALIASES[key] || key;
+  return VALID_FREQUENCIES.includes(normalized) ? normalized : undefined;
+}
+
 export async function listRecurringProfiles(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const orgId = req.tenant!.organizationId;
@@ -43,10 +60,12 @@ export async function createRecurringProfile(req: Request, res: Response, next: 
       customFields,
     } = req.body;
 
-    if (!customerId || !profileName || !items || !Array.isArray(items) || items.length === 0 || !frequency) {
+    const normalizedFrequency = normalizeFrequency(frequency);
+
+    if (!customerId || !profileName || !items || !Array.isArray(items) || items.length === 0 || !normalizedFrequency) {
       res.status(400).json({
         success: false,
-        error: { code: 'VALIDATION_ERROR', message: 'Customer ID, profileName, items, and frequency are required' },
+        error: { code: 'VALIDATION_ERROR', message: 'Customer ID, profileName, items, and a valid frequency are required' },
       });
       return;
     }
@@ -58,7 +77,7 @@ export async function createRecurringProfile(req: Request, res: Response, next: 
       customerId: new mongoose.Types.ObjectId(customerId),
       profileName,
       items,
-      frequency,
+      frequency: normalizedFrequency,
       nextRunDate: start,
       startDate: start,
       endDate: endDate ? new Date(endDate) : undefined,
@@ -79,7 +98,7 @@ export async function createRecurringProfile(req: Request, res: Response, next: 
       action: 'CREATE_RECURRING_PROFILE',
       entityType: 'RecurringProfile',
       entityId: String(profile._id),
-      details: { profileName, frequency, nextRunDate: profile.nextRunDate },
+      details: { profileName, frequency: normalizedFrequency, nextRunDate: profile.nextRunDate },
     });
 
     res.status(201).json({ success: true, data: profile });
@@ -91,9 +110,19 @@ export async function createRecurringProfile(req: Request, res: Response, next: 
 export async function updateRecurringProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const orgId = req.tenant!.organizationId;
+    const updates: any = { ...req.body };
+    if (updates.frequency !== undefined) {
+      const normalized = normalizeFrequency(updates.frequency);
+      if (!normalized) {
+        res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid frequency value' } });
+        return;
+      }
+      updates.frequency = normalized;
+    }
+
     const profile = await RecurringProfileModel.findOneAndUpdate(
       { _id: req.params.id, organizationId: new mongoose.Types.ObjectId(orgId) },
-      req.body,
+      updates,
       { new: true }
     );
 

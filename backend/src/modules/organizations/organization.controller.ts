@@ -1,8 +1,62 @@
 import { Request, Response, NextFunction } from 'express';
+import mongoose from 'mongoose';
+import jwt from 'jsonwebtoken';
 import { OrganizationModel } from '../../models/Organization.model';
+import { MembershipModel } from '../../models/Membership.model';
+import { UserModel } from '../../models/User.model';
 import { CustomFieldModel } from '../../models/CustomField.model';
 import { BILLING_MODEL_PRESETS } from '../../billing-engine/billing-models/presets';
 import { logAuditEvent } from '../../core/audit/audit.service';
+import { ENV } from '../../config/env';
+import {
+  modulesForBusinessType,
+  BUSINESS_TYPE_BILLING_MODEL,
+  type BusinessType,
+} from '@billing/shared';
+
+const VALID_BUSINESS_TYPES: BusinessType[] = ['retail', 'saas', 'services', 'general'];
+
+function makeSlug(name: string): string {
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') +
+    '-' +
+    Math.floor(Math.random() * 1000)
+  );
+}
+
+function serializeOrg(org: any) {
+  if (!org) return null;
+  return {
+    _id: org._id,
+    name: org.name,
+    slug: org.slug,
+    billingModel: org.billingModel,
+    businessType: org.businessType,
+    enabledModules: org.enabledModules,
+    settings: org.settings,
+    isOnboarded: org.isOnboarded,
+    onboarding: org.onboarding,
+  };
+}
+
+async function loadMemberships(userId: string) {
+  const memberships = await MembershipModel.find({
+    userId: new mongoose.Types.ObjectId(userId),
+    status: { $ne: 'disabled' },
+  }).populate('organizationId');
+
+  return memberships.map((m: any) => ({
+    _id: m._id,
+    userId: m.userId,
+    organizationId: m.organizationId?._id || m.organizationId,
+    organization: serializeOrg(m.organizationId),
+    role: m.role,
+    status: m.status,
+  }));
+}
 
 export async function getOrganizationProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -17,21 +71,197 @@ export async function getOrganizationProfile(req: Request, res: Response, next: 
   }
 }
 
+export async function listMyOrganizations(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const memberships = await loadMemberships(req.tenant!.userId);
+    res.json({ success: true, data: memberships });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function createOrganization(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.tenant!.userId;
+    const { name, businessType = 'general', billingModel, settings, enabledModules } = req.body;
+
+    if (!name || String(name).trim().length < 2) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Organization name is required' } });
+      return;
+    }
+
+    const bt: BusinessType = VALID_BUSINESS_TYPES.includes(businessType) ? businessType : 'general';
+    const model = billingModel || BUSINESS_TYPE_BILLING_MODEL[bt];
+    const modules =
+      Array.isArray(enabledModules) && enabledModules.length > 0
+        ? enabledModules
+        : modulesForBusinessType(bt);
+
+    const organization = await OrganizationModel.create({
+      name: String(name).trim(),
+      slug: makeSlug(String(name)),
+      billingModel: model,
+      businessType: bt,
+      enabledModules: modules,
+      settings: settings || {},
+      isOnboarded: false,
+      onboarding: { currentStep: 1, completedSteps: [], skipped: false },
+    });
+
+    const preset = BILLING_MODEL_PRESETS[model];
+    if (preset?.suggestedCustomFields) {
+      for (const field of preset.suggestedCustomFields) {
+        await CustomFieldModel.create({ organizationId: organization._id, ...field });
+      }
+    }
+
+    const membership = await MembershipModel.create({
+      userId: new mongoose.Types.ObjectId(userId),
+      organizationId: organization._id,
+      role: 'admin',
+      status: 'active',
+    });
+
+    // Switch the creator into their new organization.
+    const user = await UserModel.findById(userId);
+    if (!user) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'User not found' } });
+      return;
+    }
+    user.organizationId = organization._id;
+    await user.save();
+
+    await logAuditEvent({
+      organizationId: String(organization._id),
+      userId,
+      userEmail: req.tenant!.email,
+      action: 'CREATE_ORGANIZATION',
+      entityType: 'Organization',
+      entityId: String(organization._id),
+      details: { name: organization.name, businessType: bt },
+    });
+
+    const token = jwt.sign(
+      { organizationId: String(organization._id), userId: String(user._id), role: 'admin', email: user.email },
+      ENV.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    const memberships = await loadMemberships(userId);
+
+    res.status(201).json({
+      success: true,
+      data: {
+        token,
+        user: { _id: user._id, name: user.name, email: user.email, role: 'admin', organizationId: user.organizationId },
+        organization: serializeOrg(organization),
+        memberships,
+        membershipId: membership._id,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function switchOrganization(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.tenant!.userId;
+    const { organizationId } = req.body;
+
+    if (!organizationId || !mongoose.Types.ObjectId.isValid(organizationId)) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'A valid organizationId is required' } });
+      return;
+    }
+
+    const membership = await MembershipModel.findOne({
+      userId: new mongoose.Types.ObjectId(userId),
+      organizationId: new mongoose.Types.ObjectId(organizationId),
+      status: 'active',
+    });
+
+    // The backend — not the client — verifies membership before switching.
+    if (!membership) {
+      res.status(403).json({
+        success: false,
+        error: { code: 'NOT_A_MEMBER', message: 'You do not have access to this organization' },
+      });
+      return;
+    }
+
+    const organization = await OrganizationModel.findById(organizationId);
+    const user = await UserModel.findById(userId);
+    if (!organization || !user) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Organization or user not found' } });
+      return;
+    }
+
+    user.organizationId = organization._id;
+    await user.save();
+
+    const token = jwt.sign(
+      { organizationId: String(organization._id), userId: String(user._id), role: membership.role, email: user.email },
+      ENV.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    await logAuditEvent({
+      organizationId: String(organization._id),
+      userId,
+      userEmail: req.tenant!.email,
+      action: 'SWITCH_ORGANIZATION',
+      entityType: 'Organization',
+      entityId: String(organization._id),
+      details: { role: membership.role },
+    });
+
+    const memberships = await loadMemberships(userId);
+
+    res.json({
+      success: true,
+      data: {
+        token,
+        user: { _id: user._id, name: user.name, email: user.email, role: membership.role, organizationId: user.organizationId },
+        organization: serializeOrg(organization),
+        memberships,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function updateOrganizationSettings(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { name, settings, enabledModules, isOnboarded } = req.body;
+    const { name, settings, enabledModules, isOnboarded, onboarding, businessType } = req.body;
     const orgId = req.tenant!.organizationId;
 
-    const updatedOrg = await OrganizationModel.findByIdAndUpdate(
-      orgId,
-      {
-        ...(name && { name }),
-        ...(settings && { settings }),
-        ...(enabledModules && { enabledModules }),
-        ...(isOnboarded !== undefined && { isOnboarded }),
-      },
-      { new: true }
-    );
+    const org = await OrganizationModel.findById(orgId);
+    if (!org) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Organization not found' } });
+      return;
+    }
+
+    if (name) org.name = String(name).trim();
+    if (businessType && VALID_BUSINESS_TYPES.includes(businessType)) org.businessType = businessType;
+    if (Array.isArray(enabledModules)) org.enabledModules = enabledModules;
+    if (isOnboarded !== undefined) org.isOnboarded = Boolean(isOnboarded);
+    if (onboarding && typeof onboarding === 'object') {
+      (org as any).onboarding = {
+        ...(org as any).onboarding,
+        ...onboarding,
+      };
+    }
+    if (settings && typeof settings === 'object') {
+      // Deep-merge so partial profile updates never wipe existing settings.
+      org.settings = {
+        ...org.settings,
+        ...settings,
+        address: { ...(org.settings as any).address, ...(settings.address || {}) },
+      } as any;
+    }
+
+    await org.save();
 
     await logAuditEvent({
       organizationId: orgId,
@@ -40,10 +270,10 @@ export async function updateOrganizationSettings(req: Request, res: Response, ne
       action: 'UPDATE_ORGANIZATION_SETTINGS',
       entityType: 'Organization',
       entityId: orgId,
-      details: { name, settings, isOnboarded },
+      details: { name, isOnboarded },
     });
 
-    res.json({ success: true, data: updatedOrg });
+    res.json({ success: true, data: org });
   } catch (err) {
     next(err);
   }
@@ -78,7 +308,6 @@ export async function switchBillingModel(req: Request, res: Response, next: Next
     }
     await org.save();
 
-    // Auto-inject suggested fields if not existing
     if (preset.suggestedCustomFields) {
       for (const field of preset.suggestedCustomFields) {
         const existing = await CustomFieldModel.findOne({
@@ -131,7 +360,6 @@ export async function applyCustomArchitecture(req: Request, res: Response, next:
       return;
     }
 
-    // 1. Update organization model & modules
     if (architecture.baseBillingModel) {
       org.billingModel = architecture.baseBillingModel;
     }
@@ -144,7 +372,6 @@ export async function applyCustomArchitecture(req: Request, res: Response, next:
     org.isOnboarded = true;
     await org.save();
 
-    // 2. Provision Custom Fields
     if (architecture.customFields && Array.isArray(architecture.customFields)) {
       for (const field of architecture.customFields) {
         if (!field.fieldName || !field.targetEntity) continue;
@@ -169,15 +396,11 @@ export async function applyCustomArchitecture(req: Request, res: Response, next:
       }
     }
 
-    // 3. Provision Business Rules
     if (architecture.businessRules && Array.isArray(architecture.businessRules)) {
       const { BusinessRuleModel } = await import('../../models/BusinessRule.model');
       for (const rule of architecture.businessRules) {
         if (!rule.ruleName) continue;
-        const existing = await BusinessRuleModel.findOne({
-          organizationId: orgId,
-          ruleName: rule.ruleName,
-        });
+        const existing = await BusinessRuleModel.findOne({ organizationId: orgId, ruleName: rule.ruleName });
         if (!existing) {
           await BusinessRuleModel.create({
             organizationId: orgId,
