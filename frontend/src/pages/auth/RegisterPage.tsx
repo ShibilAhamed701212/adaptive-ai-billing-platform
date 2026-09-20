@@ -33,7 +33,11 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
         login(res.data.token, res.data.user, res.data.organization, res.data.memberships || []);
         onNavigate('/onboarding');
       } else {
-        setError(res.error?.message || 'Registration failed');
+        let errMsg = res.error?.message || 'Registration failed';
+        if (res.error?.details && Array.isArray(res.error.details)) {
+          errMsg += ': ' + res.error.details.map((d: any) => `${d.path}: ${d.message}`).join(', ');
+        }
+        setError(errMsg);
       }
     } catch (err: any) {
       setError(err.message || 'Registration failed');
