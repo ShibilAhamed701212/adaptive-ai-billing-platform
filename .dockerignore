@@ -5,6 +5,5 @@ node_modules
 .mongo_data
 uploads
 *.log
-frontend
 dist
 */dist
