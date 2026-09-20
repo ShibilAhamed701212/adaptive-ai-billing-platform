@@ -39,9 +39,10 @@ export async function logAuditEvent(params: {
   entityId?: string;
   details?: Record<string, any>;
   ipAddress?: string;
+  session?: mongoose.ClientSession;
 }): Promise<void> {
   try {
-    await AuditLogModel.create({
+    const doc = new AuditLogModel({
       organizationId: new mongoose.Types.ObjectId(params.organizationId),
       userId: new mongoose.Types.ObjectId(params.userId),
       userEmail: params.userEmail,
@@ -51,6 +52,12 @@ export async function logAuditEvent(params: {
       details: params.details,
       ipAddress: params.ipAddress,
     });
+    
+    if (params.session) {
+      await doc.save({ session: params.session });
+    } else {
+      await doc.save();
+    }
   } catch (err) {
     console.error('Failed to write audit log:', err);
   }

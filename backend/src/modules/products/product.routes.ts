@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   listProducts,
   getProduct,
+  getProductByBarcode,
   createProduct,
   updateProduct,
   deleteProduct,
@@ -19,6 +20,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 router.use(tenantMiddleware);
 
 router.get('/', listProducts);
+router.get('/barcode/:barcode', getProductByBarcode);
 router.get('/:id', getProduct);
 router.post('/', validate(createProductSchema), createProduct);
 router.patch('/:id', validate(updateProductSchema), updateProduct);

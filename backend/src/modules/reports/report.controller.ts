@@ -2,6 +2,9 @@ import { Request, Response, NextFunction } from 'express';
 import { InvoiceModel } from '../../models/Invoice.model';
 import { PaymentModel } from '../../models/Payment.model';
 import { CustomerModel } from '../../models/Customer.model';
+import { ProductModel } from '../../models/Product.model';
+import { ReturnModel } from '../../models/Return.model';
+import { ExpenseModel } from '../../models/Expense.model';
 import { DashboardSummary, AnomalyAlert } from '@billing/shared';
 import mongoose from 'mongoose';
 
@@ -59,21 +62,22 @@ export async function getDashboardSummary(req: Request, res: Response, next: Nex
 
     // Cashflow projection for upcoming 4 weeks
     const today = new Date();
-    const dates: string[] = [];
-    const projectedInflow: number[] = [];
-    const projectedOutflow: number[] = [];
+    const dates = [];
+    const projectedInflow = [];
+    const projectedOutflow = [];
 
-    for (let w = 1; w <= 4; w++) {
-      const d = new Date(today.getTime() + w * 7 * 86400000);
-      dates.push(`Week ${w} (${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`);
-      projectedInflow.push(Math.round(totalOutstanding * (0.35 / w) + 15000));
-      projectedOutflow.push(Math.round(totalRevenue * 0.12 + 5000));
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(today);
+      d.setDate(d.getDate() + i);
+      dates.push(d.toISOString().split('T')[0]);
+      projectedInflow.push(0); // Real projection requires proper logic, returning 0 for now to avoid fake data
+      projectedOutflow.push(0);
     }
 
     const summary: DashboardSummary = {
       kpis: {
         totalRevenue,
-        revenueGrowthMoM: 14.8,
+        revenueGrowthMoM: 0, // Should be calculated from DB
         totalOutstanding,
         overdueAmount,
         paidInvoicesCount: paidCount,
@@ -288,6 +292,232 @@ export async function getTopCustomersReport(req: Request, res: Response, next: N
       .sort({ outstandingBalance: -1 })
       .limit(10);
     res.json({ success: true, data: customers });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getProfitReport(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const orgId = req.tenant!.organizationId;
+    const { startDate, endDate } = req.query;
+
+    const invoiceQuery: any = {
+      organizationId: new mongoose.Types.ObjectId(orgId),
+      status: { $nin: ['draft', 'cancelled', 'void'] },
+    };
+    const returnQuery: any = { organizationId: new mongoose.Types.ObjectId(orgId) };
+    const expenseQuery: any = { organizationId: new mongoose.Types.ObjectId(orgId) };
+
+    if (startDate && endDate) {
+      invoiceQuery.issueDate = { $gte: String(startDate), $lte: String(endDate) };
+      returnQuery.date = { $gte: String(startDate), $lte: String(endDate) };
+      expenseQuery.date = { $gte: String(startDate), $lte: String(endDate) };
+    }
+
+    const [invoices, returns, expenses, products] = await Promise.all([
+      InvoiceModel.find(invoiceQuery).lean(),
+      ReturnModel.find(returnQuery).lean(),
+      ExpenseModel.find(expenseQuery).lean(),
+      ProductModel.find({ organizationId: new mongoose.Types.ObjectId(orgId) }).lean(),
+    ]);
+
+    const productCostMap = new Map<string, number>();
+    products.forEach((p) => {
+      productCostMap.set(String(p._id), p.costPrice || 0);
+    });
+
+    let grossSales = 0;
+    let totalDiscounts = 0;
+    let totalTaxCollected = 0;
+    let totalCOGS = 0;
+
+    for (const inv of invoices) {
+      grossSales += inv.subtotal || 0;
+      totalDiscounts += inv.discountTotal || 0;
+      totalTaxCollected += inv.taxTotal || 0;
+
+      if (inv.items) {
+        for (const item of inv.items) {
+          const cost = (item.productId ? productCostMap.get(String(item.productId)) : 0) || 0;
+          totalCOGS += (item.quantity || 0) * cost;
+        }
+      }
+    }
+
+    const totalRefunds = returns.reduce((sum, r) => sum + (r.totalRefundAmount || 0), 0);
+    const totalOperatingExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+
+    const netSales = grossSales - totalDiscounts - totalRefunds;
+    const grossProfit = netSales - totalCOGS;
+    const netProfit = grossProfit - totalOperatingExpenses;
+    const grossMarginPercent = netSales > 0 ? Math.round((grossProfit / netSales) * 10000) / 100 : 0;
+    const netMarginPercent = netSales > 0 ? Math.round((netProfit / netSales) * 10000) / 100 : 0;
+
+    res.json({
+      success: true,
+      data: {
+        grossSales: Math.round(grossSales * 100) / 100,
+        totalDiscounts: Math.round(totalDiscounts * 100) / 100,
+        totalRefunds: Math.round(totalRefunds * 100) / 100,
+        netSales: Math.round(netSales * 100) / 100,
+        totalCOGS: Math.round(totalCOGS * 100) / 100,
+        grossProfit: Math.round(grossProfit * 100) / 100,
+        totalOperatingExpenses: Math.round(totalOperatingExpenses * 100) / 100,
+        netProfit: Math.round(netProfit * 100) / 100,
+        grossMarginPercent,
+        netMarginPercent,
+        totalTaxCollected: Math.round(totalTaxCollected * 100) / 100,
+        transactionCount: invoices.length,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getBestSellersReport(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const orgId = req.tenant!.organizationId;
+    const { limit = 10 } = req.query;
+
+    const invoices = await InvoiceModel.find({
+      organizationId: new mongoose.Types.ObjectId(orgId),
+      status: { $nin: ['draft', 'cancelled', 'void'] },
+    }).lean();
+
+    const aggregation = new Map<string, { name: string; sku?: string; unitsSold: number; totalRevenue: number }>();
+
+    for (const inv of invoices) {
+      if (inv.items) {
+        for (const item of inv.items) {
+          const key = item.sku || String(item.productId || item.description);
+          const current = aggregation.get(key) || {
+            name: item.description,
+            sku: item.sku,
+            unitsSold: 0,
+            totalRevenue: 0,
+          };
+          current.unitsSold += item.quantity || 0;
+          current.totalRevenue += item.lineTotal || 0;
+          aggregation.set(key, current);
+        }
+      }
+    }
+
+    const sorted = Array.from(aggregation.values())
+      .sort((a, b) => b.unitsSold - a.unitsSold)
+      .slice(0, Number(limit));
+
+    res.json({ success: true, data: sorted });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getGSTSummaryReport(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const orgId = req.tenant!.organizationId;
+    const { startDate, endDate } = req.query;
+
+    const query: any = {
+      organizationId: new mongoose.Types.ObjectId(orgId),
+      status: { $nin: ['draft', 'cancelled', 'void'] },
+    };
+    if (startDate && endDate) {
+      query.issueDate = { $gte: String(startDate), $lte: String(endDate) };
+    }
+
+    const invoices = await InvoiceModel.find(query).lean();
+
+    let totalTaxable = 0;
+    let cgstTotal = 0;
+    let sgstTotal = 0;
+    let igstTotal = 0;
+    let totalTax = 0;
+
+    const hsnSummaryMap = new Map<string, { hsn: string; taxable: number; taxAmount: number }>();
+    const rateBreakdownMap = new Map<number, { rate: number; taxableValue: number; cgst: number; sgst: number; igst: number; totalTax: number }>();
+
+    for (const inv of invoices) {
+      const invoiceTaxable = Math.max(0, (inv.subtotal || 0) - (inv.discountTotal || 0));
+      totalTaxable += invoiceTaxable;
+
+      if (inv.taxBreakdown && inv.taxBreakdown.length > 0) {
+        for (const tb of inv.taxBreakdown) {
+          totalTax += tb.taxAmount || 0;
+          if (tb.taxType === 'CGST') cgstTotal += tb.taxAmount || 0;
+          else if (tb.taxType === 'SGST') sgstTotal += tb.taxAmount || 0;
+          else if (tb.taxType === 'IGST') igstTotal += tb.taxAmount || 0;
+        }
+      } else if (inv.taxTotal) {
+        totalTax += inv.taxTotal;
+      }
+
+      if (inv.items) {
+        for (const item of inv.items) {
+          const rawRate = Number(item.taxRate) || 0;
+          const rPercent = rawRate <= 1 ? Math.round(rawRate * 100) : Math.round(rawRate);
+          const itemTaxable = Math.max(0, (item.lineTotal || 0) - (item.taxAmount || 0));
+          const itemTax = item.taxAmount || 0;
+
+          const rExisting = rateBreakdownMap.get(rPercent) || {
+            rate: rPercent,
+            taxableValue: 0,
+            cgst: 0,
+            sgst: 0,
+            igst: 0,
+            totalTax: 0,
+          };
+          rExisting.taxableValue += itemTaxable;
+          rExisting.totalTax += itemTax;
+
+          const hasIgst = inv.taxBreakdown?.some(tb => tb.taxType === 'IGST');
+          if (hasIgst) {
+            rExisting.igst += itemTax;
+          } else {
+            rExisting.cgst += Math.round((itemTax / 2) * 100) / 100;
+            rExisting.sgst += Math.round((itemTax / 2) * 100) / 100;
+          }
+          rateBreakdownMap.set(rPercent, rExisting);
+
+          const hsn = item.hsnSacCode || 'N/A';
+          const existing = hsnSummaryMap.get(hsn) || { hsn, taxable: 0, taxAmount: 0 };
+          existing.taxable += itemTaxable;
+          existing.taxAmount += itemTax;
+          hsnSummaryMap.set(hsn, existing);
+        }
+      }
+    }
+
+    const summaryData = {
+      totalTaxable: Math.round(totalTaxable * 100) / 100,
+      cgstTotal: Math.round(cgstTotal * 100) / 100,
+      sgstTotal: Math.round(sgstTotal * 100) / 100,
+      igstTotal: Math.round(igstTotal * 100) / 100,
+      totalTax: Math.round(totalTax * 100) / 100,
+      invoiceCount: invoices.length,
+    };
+
+    res.json({
+      success: true,
+      data: {
+        summary: summaryData,
+        // Also provide top-level aliases for direct access
+        totalTaxable: summaryData.totalTaxable,
+        totalTaxableValue: summaryData.totalTaxable,
+        cgstTotal: summaryData.cgstTotal,
+        totalCGST: summaryData.cgstTotal,
+        sgstTotal: summaryData.sgstTotal,
+        totalSGST: summaryData.sgstTotal,
+        igstTotal: summaryData.igstTotal,
+        totalTax: summaryData.totalTax,
+        invoiceCount: summaryData.invoiceCount,
+        breakdown: Array.from(rateBreakdownMap.values()),
+        rateBreakdown: Array.from(rateBreakdownMap.values()),
+        hsnSummary: Array.from(hsnSummaryMap.values()),
+      },
+    });
   } catch (err) {
     next(err);
   }

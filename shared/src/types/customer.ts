@@ -18,6 +18,8 @@ export interface Customer {
   shippingAddress?: Address;
   creditLimit?: number;
   outstandingBalance: number;
+  storeCreditBalance?: number;
+  loyaltyPoints?: number;
   currency: string;
   tags: string[];
   customFields: Record<string, any>;

@@ -14,5 +14,5 @@ coverage/
 backend/.mongo_data/
 .data/
 uploads/
-
-
+test-results/
+playwright-report/

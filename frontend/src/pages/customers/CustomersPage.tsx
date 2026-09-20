@@ -2,13 +2,26 @@ import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../api/client';
 import { Customer } from '@billing/shared';
 import { DynamicFieldRenderer } from '../../components/dynamic-forms/DynamicFieldRenderer';
-import { Plus, Users, Search, X, CheckCircle2, Building2 } from 'lucide-react';
+import { Plus, Users, Search, X, CheckCircle2, Building2, CreditCard, Award, DollarSign, Edit2, AlertCircle } from 'lucide-react';
 
 export const CustomersPage: React.FC = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [search, setSearch] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+
+  // Payment Modal State
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [selectedCustomerForPayment, setSelectedCustomerForPayment] = useState<Customer | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState<number | ''>('');
+  const [paymentMethod, setPaymentMethod] = useState<string>('cash');
+  const [paymentNotes, setPaymentNotes] = useState<string>('');
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+
+  // Edit Customer Modal State
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
 
   // New Customer Form State
   const [name, setName] = useState<string>('');
@@ -78,6 +91,39 @@ export const CustomersPage: React.FC = () => {
     }
   };
 
+  const handleRecordPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCustomerForPayment || !paymentAmount || Number(paymentAmount) <= 0) return;
+
+    setIsProcessingPayment(true);
+    setPaymentError(null);
+
+    try {
+      const res = await apiRequest(`/customers/${selectedCustomerForPayment._id}/payments`, {
+        method: 'POST',
+        body: JSON.stringify({
+          amount: Number(paymentAmount),
+          method: paymentMethod,
+          notes: paymentNotes || `Udhaar Settlement via ${paymentMethod}`,
+        }),
+      });
+
+      if (res.success) {
+        setIsPaymentModalOpen(false);
+        setSelectedCustomerForPayment(null);
+        setPaymentAmount('');
+        setPaymentNotes('');
+        fetchCustomers();
+      } else {
+        setPaymentError(res.error?.message || 'Payment processing failed');
+      }
+    } catch (err: any) {
+      setPaymentError(err.message || 'Payment processing failed');
+    } finally {
+      setIsProcessingPayment(false);
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       {/* Page Header */}
@@ -85,7 +131,7 @@ export const CustomersPage: React.FC = () => {
         <div>
           <h1 style={{ fontSize: '1.75rem', margin: 0 }}>Customer Directory</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', margin: '0.25rem 0 0' }}>
-            Client accounts, GSTIN tax identifiers, addresses, and model-specific custom metadata attributes.
+            Client accounts, GSTIN tax identifiers, Udhaar balances, and Store Credit wallets.
           </p>
         </div>
 
@@ -119,12 +165,12 @@ export const CustomersPage: React.FC = () => {
             <thead>
               <tr>
                 <th>Customer Name</th>
-                <th>Company Entity</th>
-                <th>Email & Phone</th>
-                <th>GSTIN / Tax ID</th>
-                <th>State Jurisdiction</th>
-                <th>Outstanding Balance (₹)</th>
-                <th>Custom Metadata</th>
+                <th>Company / Phone</th>
+                <th>GSTIN</th>
+                <th>Udhaar Balance (₹)</th>
+                <th>Store Credit (₹)</th>
+                <th>Loyalty Points</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -137,35 +183,48 @@ export const CustomersPage: React.FC = () => {
               ) : customers.length === 0 ? (
                 <tr>
                   <td colSpan={7} style={{ textAlign: 'center', padding: '3.5rem', color: 'var(--text-muted)' }}>
-                    No customer accounts found. Click "Add New Customer" to register one.
+                    No customer accounts matched.
                   </td>
                 </tr>
               ) : (
                 customers.map((c) => (
                   <tr key={c._id}>
-                    <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{c.name}</td>
-                    <td>{c.companyName || '-'}</td>
                     <td>
-                      <div>{c.email}</div>
+                      <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{c.name}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{c.email}</div>
+                    </td>
+                    <td>
+                      <div>{c.companyName || '-'}</div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{c.phone || '-'}</div>
                     </td>
                     <td style={{ fontSize: '0.8125rem', fontFamily: 'var(--font-mono)' }}>{c.gstinOrTaxId || 'Unregistered'}</td>
-                    <td>{c.billingAddress?.state || '-'}</td>
-                    <td style={{ fontWeight: 700, fontFamily: 'var(--font-mono)', color: c.outstandingBalance > 0 ? 'var(--color-warning)' : 'var(--color-success)' }}>
-                      ₹{c.outstandingBalance.toLocaleString()}
+                    <td style={{ fontWeight: 700, fontFamily: 'var(--font-mono)', color: (c.outstandingBalance || 0) > 0 ? 'var(--color-warning)' : 'var(--color-success)' }}>
+                      ₹{(c.outstandingBalance || 0).toLocaleString()}
+                    </td>
+                    <td style={{ fontWeight: 600, fontFamily: 'var(--font-mono)', color: 'var(--accent-primary)' }}>
+                      ₹{(c.storeCreditBalance || 0).toLocaleString()}
                     </td>
                     <td>
-                      {c.customFields && Object.keys(c.customFields).length > 0 ? (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
-                          {Object.entries(c.customFields).map(([k, v]) => (
-                            <span key={k} className="badge badge-draft" style={{ fontSize: '0.65rem' }}>
-                              {k}: {String(v)}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>-</span>
-                      )}
+                      <span className="badge badge-success" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <Award size={12} /> {c.loyaltyPoints || 0} pts
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <div style={{ display: 'inline-flex', gap: '0.5rem' }}>
+                        {(c.outstandingBalance || 0) > 0 && (
+                          <button 
+                            className="btn btn-primary btn-sm"
+                            onClick={() => {
+                              setSelectedCustomerForPayment(c);
+                              setPaymentAmount(c.outstandingBalance || '');
+                              setPaymentError(null);
+                              setIsPaymentModalOpen(true);
+                            }}
+                          >
+                            <DollarSign size={14} /> Record Payment
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -323,6 +382,115 @@ export const CustomersPage: React.FC = () => {
                 </button>
                 <button type="submit" className="btn btn-primary" disabled={isSaving}>
                   <CheckCircle2 size={16} /> Save Customer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Record Payment Modal */}
+      {isPaymentModalOpen && selectedCustomerForPayment && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.6)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 100,
+            padding: '1.5rem',
+          }}
+        >
+          <div
+            className="glass-panel"
+            style={{
+              width: '100%',
+              maxWidth: '460px',
+              padding: '2rem',
+              background: '#ffffff',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+              <h2 style={{ fontSize: '1.25rem', margin: 0 }}>Record Udhaar Payment</h2>
+              <button className="btn btn-ghost btn-sm" onClick={() => setIsPaymentModalOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            <p className="section-lead">
+              Client: <strong>{selectedCustomerForPayment.name}</strong> • Outstanding: <strong>₹{(selectedCustomerForPayment.outstandingBalance || 0).toLocaleString()}</strong>
+            </p>
+
+            {paymentError && (
+              <div
+                style={{
+                  background: 'var(--color-danger-bg)',
+                  border: '1px solid #fecdd3',
+                  color: 'var(--color-danger)',
+                  padding: '0.75rem 1rem',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: '0.8125rem',
+                  marginBottom: '1rem',
+                  fontWeight: 600,
+                }}
+              >
+                {paymentError}
+              </div>
+            )}
+
+            <form onSubmit={handleRecordPayment} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div className="form-group">
+                <label className="form-label">Payment Amount (₹) *</label>
+                <input
+                  type="number"
+                  required
+                  min="0.01"
+                  step="0.01"
+                  max={selectedCustomerForPayment.outstandingBalance || undefined}
+                  className="form-input"
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(e.target.value ? Number(e.target.value) : '')}
+                  placeholder="Enter amount..."
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Payment Mode</label>
+                <select className="form-select" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+                  <option value="cash">Cash</option>
+                  <option value="upi">UPI / QR Code</option>
+                  <option value="card">Debit / Credit Card</option>
+                  <option value="bank_transfer">Direct Bank Transfer (NEFT/IMPS)</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Notes / Cheque / Ref No.</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={paymentNotes}
+                  onChange={(e) => setPaymentNotes(e.target.value)}
+                  placeholder="e.g. UPI Ref #829381923"
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '6px' }}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Remaining Balance:</span>
+                <span style={{ fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
+                  ₹{Math.max(0, (selectedCustomerForPayment.outstandingBalance || 0) - (Number(paymentAmount) || 0)).toLocaleString()}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setIsPaymentModalOpen(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={isProcessingPayment}>
+                  {isProcessingPayment ? 'Recording...' : <><CheckCircle2 size={16} /> Confirm Payment</>}
                 </button>
               </div>
             </form>

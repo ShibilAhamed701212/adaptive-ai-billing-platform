@@ -7,7 +7,10 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "seed": "tsx src/seed.ts",
-    "test": "tsx src/billing-engine/calculators/invoice-calculator.test.ts"
+    "test": "tsx src/billing-engine/calculators/invoice-calculator.test.ts",
+    "test:pos": "ts-node src/tests/pos.e2e.test.ts",
+    "test:integration": "ts-node src/tests/pos.integration.test.ts",
+    "lint": "eslint src --ext .ts"
   },
   "dependencies": {
     "@billing/shared": "*",
@@ -39,6 +42,7 @@
     "@types/pdfkit": "^0.17.6",
     "@types/uuid": "^10.0.0",
     "mongodb-memory-server": "^11.2.0",
+    "ts-node": "^10.9.2",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2"
   }

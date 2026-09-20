@@ -15,10 +15,15 @@ export async function listProducts(req: Request, res: Response, next: NextFuncti
       query.type = type;
     }
     if (search) {
+      const searchStr = String(search).trim();
       query.$or = [
-        { name: { $regex: String(search), $options: 'i' } },
-        { sku: { $regex: String(search), $options: 'i' } },
-        { description: { $regex: String(search), $options: 'i' } },
+        { name: { $regex: searchStr, $options: 'i' } },
+        { sku: { $regex: searchStr, $options: 'i' } },
+        { description: { $regex: searchStr, $options: 'i' } },
+        { barcode: { $regex: searchStr, $options: 'i' } },
+        { barcodes: searchStr },
+        { category: { $regex: searchStr, $options: 'i' } },
+        { brand: { $regex: searchStr, $options: 'i' } },
       ];
     }
 
@@ -63,40 +68,105 @@ export async function getProduct(req: Request, res: Response, next: NextFunction
   }
 }
 
-export async function createProduct(req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function getProductByBarcode(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const orgId = req.tenant!.organizationId;
-    const { name, sku, description, type, unit, unitPrice, costPrice, taxRate, hsnSacCode, pricingTiers, customFields } = req.body;
+    const barcode = String(req.params.barcode).trim();
 
-    if (!name || !sku || unitPrice === undefined) {
-      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Name, SKU, and unit price are required' } });
+    const product = await ProductModel.findOne({
+      organizationId: new mongoose.Types.ObjectId(orgId),
+      isActive: true,
+      $or: [
+        { barcode: barcode },
+        { barcodes: barcode },
+        { sku: barcode.toUpperCase() },
+      ],
+    });
+
+    if (!product) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: `Product not found for barcode: ${barcode}` } });
       return;
     }
 
+    res.json({ success: true, data: product });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function createProduct(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const orgId = req.tenant!.organizationId;
+    const {
+      name,
+      sku,
+      description,
+      type,
+      unit,
+      unitPrice,
+      costPrice,
+      taxRate,
+      hsnSacCode,
+      pricingTiers,
+      customFields,
+      barcode,
+      barcodes,
+      mrp,
+      batchNumber,
+      expiryDate,
+      category,
+      brand,
+      isGstInclusive,
+      stockQuantity,
+      lowStockThreshold,
+      manageInventory,
+    } = req.body;
+
+    // Check SKU Uniqueness within Org
     const existingSku = await ProductModel.findOne({
       organizationId: new mongoose.Types.ObjectId(orgId),
       sku: sku.toUpperCase().trim(),
     });
-
     if (existingSku) {
-      res.status(400).json({ success: false, error: { code: 'DUPLICATE_SKU', message: 'A product with this SKU already exists' } });
+      res.status(409).json({ success: false, error: { code: 'DUPLICATE_SKU', message: 'A product with this SKU already exists' } });
       return;
     }
 
-    // Dynamic field validation
-    const fieldDefs = await CustomFieldModel.find({ organizationId: orgId, targetEntity: 'product' }).lean();
-    const validation = validateCustomFields(fieldDefs, customFields);
-    if (!validation.isValid) {
-      res.status(400).json({
-        success: false,
-        error: { code: 'CUSTOM_FIELD_ERROR', message: 'Custom field validation failed', details: validation.errors },
+    // Check Barcode Uniqueness within Org if provided
+    if (barcode) {
+      const existingBarcode = await ProductModel.findOne({
+        organizationId: new mongoose.Types.ObjectId(orgId),
+        $or: [{ barcode: barcode.trim() }, { barcodes: barcode.trim() }],
       });
-      return;
+      if (existingBarcode) {
+        res.status(409).json({ success: false, error: { code: 'DUPLICATE_BARCODE', message: 'A product with this barcode already exists' } });
+        return;
+      }
+    }
+
+    if (customFields) {
+      const fieldDefs = await CustomFieldModel.find({ organizationId: orgId, targetEntity: 'product' }).lean();
+      const validation = validateCustomFields(fieldDefs, customFields);
+      if (!validation.isValid) {
+        res.status(400).json({
+          success: false,
+          error: { code: 'CUSTOM_FIELD_ERROR', message: 'Custom field validation failed', details: validation.errors },
+        });
+        return;
+      }
+    }
+
+    const allBarcodes: string[] = [];
+    if (barcode) allBarcodes.push(barcode.trim());
+    if (Array.isArray(barcodes)) {
+      barcodes.forEach((b: string) => {
+        if (b && !allBarcodes.includes(b.trim())) allBarcodes.push(b.trim());
+      });
     }
 
     const product = await ProductModel.create({
       organizationId: new mongoose.Types.ObjectId(orgId),
-      name,
+      name: name.trim(),
       sku: sku.toUpperCase().trim(),
       description,
       type: type || 'goods',
@@ -108,10 +178,17 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
       pricingTiers: pricingTiers || [],
       customFields: customFields || {},
       isActive: true,
-      barcode: req.body.barcode,
-      stockQuantity: req.body.stockQuantity,
-      lowStockThreshold: req.body.lowStockThreshold,
-      manageInventory: req.body.manageInventory,
+      barcode: barcode ? barcode.trim() : undefined,
+      barcodes: allBarcodes,
+      mrp: mrp !== undefined ? Number(mrp) : undefined,
+      batchNumber,
+      expiryDate,
+      category,
+      brand,
+      isGstInclusive: Boolean(isGstInclusive),
+      stockQuantity: Number(stockQuantity) || 0,
+      lowStockThreshold: Number(lowStockThreshold) || 5,
+      manageInventory: Boolean(manageInventory),
     });
 
     await logAuditEvent({

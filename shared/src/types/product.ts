@@ -22,6 +22,13 @@ export interface Product {
   customFields: Record<string, any>;
   isActive: boolean;
   barcode?: string;
+  barcodes?: string[];
+  mrp?: number;
+  batchNumber?: string;
+  expiryDate?: string;
+  category?: string;
+  brand?: string;
+  isGstInclusive?: boolean;
   stockQuantity?: number;
   lowStockThreshold?: number;
   manageInventory?: boolean;

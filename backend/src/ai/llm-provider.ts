@@ -37,35 +37,56 @@ export async function callLLM(messages: LLMMessage[], options?: { json?: boolean
       const systemMsg = messages.find((m) => m.role === 'system');
       const systemInstruction = systemMsg ? { parts: [{ text: systemMsg.content }] } : undefined;
 
-      // Try standard active Gemini models
-      const modelsToTry = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-1.5-flash'];
-      for (const model of modelsToTry) {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents,
-            systemInstruction,
-            generationConfig: {
-              temperature: options?.temperature ?? 0.2,
-              responseMimeType: options?.json ? 'application/json' : 'text/plain',
-            },
-          }),
-        });
+      // Try standard active Gemini models in priority order
+      const modelsToTry = [
+        'gemini-3.6-flash',
+        'gemini-3.8-flash',
+        'gemini-3.5-flash',
+        'gemini-3.1-flash-lite',
+        'gemini-flash-latest',
+        'gemini-flash-lite-latest',
+      ];
 
-        if (res.ok) {
-          const data: any = await res.json();
-          let text: string | undefined = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (text) {
-            text = text.trim();
-            if (options?.json) {
-              text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+      for (const model of modelsToTry) {
+        // Attempt call with 1 retry on 503 (transient overload)
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
+            const res = await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents,
+                systemInstruction,
+                generationConfig: {
+                  temperature: options?.temperature ?? 0.2,
+                  responseMimeType: options?.json ? 'application/json' : 'text/plain',
+                },
+              }),
+            });
+
+            if (res.ok) {
+              const data: any = await res.json();
+              let text: string | undefined = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (text) {
+                text = text.trim();
+                if (options?.json) {
+                  text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+                }
+                return text;
+              }
+            } else if (res.status === 503 && attempt === 0) {
+              // Wait briefly before retry on temporary high demand
+              await new Promise((r) => setTimeout(r, 600));
+              continue;
+            } else {
+              console.warn(`Gemini API call (${model}) returned status:`, res.status);
+              break; // Try next model in list
             }
-            return text;
+          } catch (fetchErr) {
+            console.warn(`Network error calling Gemini (${model}):`, fetchErr);
+            break;
           }
-        } else {
-          console.warn(`Gemini API call (${model}) returned status:`, res.status);
         }
       }
     } catch (err) {

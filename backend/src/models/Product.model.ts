@@ -31,6 +31,13 @@ const ProductSchema = new Schema<IProductDoc>(
     ],
     customFields: { type: Schema.Types.Mixed, default: {} },
     barcode: { type: String, trim: true, sparse: true },
+    barcodes: [{ type: String, trim: true }],
+    mrp: { type: Number },
+    batchNumber: { type: String, trim: true },
+    expiryDate: { type: String, trim: true },
+    category: { type: String, trim: true },
+    brand: { type: String, trim: true },
+    isGstInclusive: { type: Boolean, default: false },
     stockQuantity: { type: Number, default: 0 },
     lowStockThreshold: { type: Number, default: 5 },
     manageInventory: { type: Boolean, default: false },
@@ -41,6 +48,7 @@ const ProductSchema = new Schema<IProductDoc>(
 
 ProductSchema.index({ organizationId: 1, sku: 1 }, { unique: true });
 ProductSchema.index({ organizationId: 1, barcode: 1 });
+ProductSchema.index({ organizationId: 1, barcodes: 1 });
 ProductSchema.index({ organizationId: 1, name: 1 });
 
 export const ProductModel = mongoose.model<IProductDoc>('Product', ProductSchema);

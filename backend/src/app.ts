@@ -19,6 +19,14 @@ import auditRoutes from './modules/audit/audit.routes';
 import dynamicRoutes from './modules/dynamic/dynamic.routes';
 import aiRoutes from './modules/ai/ai.routes';
 import reportRoutes from './modules/reports/report.routes';
+import posRoutes from './modules/pos/pos.routes';
+import inventoryRoutes from './modules/inventory/inventory.routes';
+import supplierRoutes from './modules/suppliers/supplier.routes';
+import purchaseRoutes from './modules/purchases/purchase.routes';
+import returnRoutes from './modules/returns/return.routes';
+import shiftRoutes from './modules/shifts/shift.routes';
+import expenseRoutes from './modules/expenses/expense.routes';
+import systemRoutes from './modules/system/system.routes';
 
 export function createApp(): Express {
   const app = express();
@@ -63,6 +71,13 @@ export function createApp(): Express {
         'dynamic',
         'ai',
         'reports',
+        'pos',
+        'inventory',
+        'suppliers',
+        'purchases',
+        'returns',
+        'shifts',
+        'expenses',
       ],
     });
   });
@@ -83,6 +98,14 @@ export function createApp(): Express {
   app.use('/api/v1/dynamic', dynamicRoutes);
   app.use('/api/v1/ai', aiRoutes);
   app.use('/api/v1/reports', reportRoutes);
+  app.use('/api/v1/pos', posRoutes);
+  app.use('/api/v1/inventory', inventoryRoutes);
+  app.use('/api/v1/suppliers', supplierRoutes);
+  app.use('/api/v1/purchases', purchaseRoutes);
+  app.use('/api/v1/returns', returnRoutes);
+  app.use('/api/v1/shifts', shiftRoutes);
+  app.use('/api/v1/expenses', expenseRoutes);
+  app.use('/api/v1/system', systemRoutes);
 
   // 404 Handler
   app.use((req, res) => {

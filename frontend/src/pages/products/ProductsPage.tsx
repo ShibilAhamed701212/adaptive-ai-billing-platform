@@ -2,13 +2,16 @@ import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../api/client';
 import { Product } from '@billing/shared';
 import { DynamicFieldRenderer } from '../../components/dynamic-forms/DynamicFieldRenderer';
-import { Plus, Package, Search, X, CheckCircle2 } from 'lucide-react';
+import { Plus, Package, Search, X, CheckCircle2, Barcode, Trash2, Edit2 } from 'lucide-react';
+import { BarcodeLabelModal } from '../../components/products/BarcodeLabelModal';
 
 export const ProductsPage: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [selectedProductForLabels, setSelectedProductForLabels] = useState<Product | null>(null);
+  const [isLabelModalOpen, setIsLabelModalOpen] = useState<boolean>(false);
 
   // New Product Form State
   const [name, setName] = useState<string>('');
@@ -127,18 +130,19 @@ export const ProductsPage: React.FC = () => {
                 <th>Base Unit Price (₹)</th>
                 <th>Default Tax Slab</th>
                 <th>HSN / SAC</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: '3.5rem', color: 'var(--text-muted)' }}>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '3.5rem', color: 'var(--text-muted)' }}>
                     Loading catalog items...
                   </td>
                 </tr>
               ) : products.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: '3.5rem', color: 'var(--text-muted)' }}>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '3.5rem', color: 'var(--text-muted)' }}>
                     No catalog items found. Click "Add New Product/Service" to create one.
                   </td>
                 </tr>
@@ -163,6 +167,18 @@ export const ProductsPage: React.FC = () => {
                     </td>
                     <td>{p.taxRate * 100}% GST</td>
                     <td style={{ fontSize: '0.8125rem', fontFamily: 'var(--font-mono)' }}>{p.hsnSacCode || '-'}</td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => {
+                          setSelectedProductForLabels(p);
+                          setIsLabelModalOpen(true);
+                        }}
+                        title="Print Barcode Labels"
+                      >
+                        <Barcode size={15} /> Print Labels
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -347,6 +363,16 @@ export const ProductsPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Barcode Label Print Modal */}
+      <BarcodeLabelModal
+        isOpen={isLabelModalOpen}
+        onClose={() => {
+          setIsLabelModalOpen(false);
+          setSelectedProductForLabels(null);
+        }}
+        product={selectedProductForLabels}
+      />
     </div>
   );
 };

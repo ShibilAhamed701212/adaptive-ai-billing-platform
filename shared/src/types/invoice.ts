@@ -77,6 +77,9 @@ export interface Invoice {
   grandTotal: number;
   amountPaid: number;
   amountDue: number;
+  amountTendered?: number;
+  changeGiven?: number;
+  shiftId?: string;
   status: InvoiceStatus;
   notes?: string;
   terms?: string;
@@ -93,6 +96,7 @@ export interface Invoice {
   aiRiskExplanation?: string;
   predictedPaymentDate?: string;
   createdBy: string;
+  clientTransactionId?: string;
   createdAt: string;
   updatedAt: string;
 }

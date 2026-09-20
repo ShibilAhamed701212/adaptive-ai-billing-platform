@@ -33,28 +33,32 @@ interface ARAgingData {
 }
 
 export const ReportsPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'revenue' | 'aging' | 'statement' | 'top_clients'>('revenue');
+  const [activeTab, setActiveTab] = useState<'revenue' | 'aging' | 'statement' | 'top_clients' | 'gst' | 'hsn' | 'profit'>('revenue');
   const [revenueData, setRevenueData] = useState<RevenuePoint[]>([]);
   const [agingData, setAgingData] = useState<ARAgingData | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-
-  // Statement Generator State
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [statementData, setStatementData] = useState<any>(null);
+  const [gstSummary, setGstSummary] = useState<any>(null);
+  const [profitReport, setProfitReport] = useState<any>(null);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
+  const [loading, setLoading] = useState<boolean>(true);
   const [loadingStatement, setLoadingStatement] = useState<boolean>(false);
 
   const loadReports = async () => {
     try {
-      const [revRes, agingRes, custRes] = await Promise.all([
+      const [revRes, agingRes, custRes, gstRes, profitRes] = await Promise.all([
         apiRequest<RevenuePoint[]>('/reports/revenue'),
         apiRequest<ARAgingData>('/reports/ar-aging'),
         apiRequest<Customer[]>('/reports/top-customers'),
+        apiRequest('/reports/gst-summary'),
+        apiRequest('/reports/profit'),
       ]);
 
       if (revRes.success && revRes.data) setRevenueData(revRes.data);
       if (agingRes.success && agingRes.data) setAgingData(agingRes.data);
       if (custRes.success && custRes.data) setCustomers(custRes.data);
+      if (gstRes.success && gstRes.data) setGstSummary(gstRes.data);
+      if (profitRes.success && profitRes.data) setProfitReport(profitRes.data);
     } catch (e) {
       console.error('Failed to load reports', e);
     } finally {
@@ -108,7 +112,10 @@ export const ReportsPage: React.FC = () => {
       {/* Navigation Tabs */}
       <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.5rem', flexWrap: 'wrap' }}>
         {[
-          { id: 'revenue', label: 'Revenue Trends & GST', icon: TrendingUp },
+          { id: 'revenue', label: 'Revenue Trends', icon: TrendingUp },
+          { id: 'gst', label: 'GST Summary', icon: FileText },
+          { id: 'hsn', label: 'HSN Summary', icon: FileText },
+          { id: 'profit', label: 'Profit & Loss', icon: DollarSign },
           { id: 'aging', label: 'Accounts Receivable (AR) Aging', icon: Clock },
           { id: 'statement', label: 'Customer Account Statement', icon: FileText },
           { id: 'top_clients', label: 'Top Accounts by Volume', icon: Users },
@@ -410,6 +417,164 @@ export const ReportsPage: React.FC = () => {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* TAB 5: GST SUMMARY */}
+      {activeTab === 'gst' && gstSummary && (() => {
+        const summary = gstSummary.summary || gstSummary;
+        const totalTaxable = summary.totalTaxable ?? summary.totalTaxableValue ?? 0;
+        const cgstTotal = summary.cgstTotal ?? summary.totalCGST ?? 0;
+        const sgstTotal = summary.sgstTotal ?? summary.totalSGST ?? 0;
+        const igstTotal = summary.igstTotal ?? 0;
+        const totalTax = summary.totalTax ?? (cgstTotal + sgstTotal + igstTotal);
+
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <div className="glass-panel" style={{ padding: '1.5rem' }}>
+              <h2>GST Filing Summary (Current Month)</h2>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
+                <div className="kpi-card">
+                  <div className="kpi-header"><span className="kpi-title">Taxable Value</span></div>
+                  <div className="kpi-value">₹{totalTaxable.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                </div>
+                <div className="kpi-card">
+                  <div className="kpi-header"><span className="kpi-title">CGST</span></div>
+                  <div className="kpi-value">₹{cgstTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                </div>
+                <div className="kpi-card">
+                  <div className="kpi-header"><span className="kpi-title">SGST</span></div>
+                  <div className="kpi-value">₹{sgstTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                </div>
+                <div className="kpi-card">
+                  <div className="kpi-header"><span className="kpi-title">IGST</span></div>
+                  <div className="kpi-value">₹{igstTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                </div>
+                <div className="kpi-card" style={{ borderLeft: '4px solid var(--accent-primary)' }}>
+                  <div className="kpi-header"><span className="kpi-title">Total GST</span></div>
+                  <div className="kpi-value" style={{ color: 'var(--accent-primary)', fontWeight: 800 }}>
+                    ₹{totalTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  </div>
+                </div>
+              </div>
+              <div style={{ marginTop: '2rem' }}>
+                <h3>GST Rate Breakdown</h3>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>GST Rate</th>
+                      <th>Taxable Value</th>
+                      <th>CGST</th>
+                      <th>SGST</th>
+                      <th>IGST</th>
+                      <th>Total Tax</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {!gstSummary.breakdown || gstSummary.breakdown.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                          No GST rate breakdown data for current period.
+                        </td>
+                      </tr>
+                    ) : (
+                      gstSummary.breakdown.map((b: any, idx: number) => (
+                        <tr key={idx}>
+                          <td>{b.rate}%</td>
+                          <td className="num-mono">₹{b.taxableValue?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '0.00'}</td>
+                          <td className="num-mono">₹{b.cgst?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '0.00'}</td>
+                          <td className="num-mono">₹{b.sgst?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '0.00'}</td>
+                          <td className="num-mono">₹{b.igst?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '0.00'}</td>
+                          <td className="num-mono" style={{ fontWeight: 700, color: 'var(--accent-primary)' }}>
+                            ₹{b.totalTax?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '0.00'}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* TAB: HSN SUMMARY */}
+      {activeTab === 'hsn' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          <div className="glass-panel" style={{ padding: '1.5rem' }}>
+            <h2>HSN / SAC Inward & Outward Summary</h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+              Statutory aggregation by Harmonized System of Nomenclature (HSN) for GSTR-1 Table 12 compliance.
+            </p>
+            <div className="data-table-container" style={{ marginTop: '1.5rem' }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>HSN / SAC Code</th>
+                    <th>Taxable Value (₹)</th>
+                    <th>Tax Amount (₹)</th>
+                    <th>Total Value (₹)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {!gstSummary?.hsnSummary || gstSummary.hsnSummary.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                        No HSN transactions logged in current period.
+                      </td>
+                    </tr>
+                  ) : (
+                    gstSummary.hsnSummary.map((h: any, idx: number) => (
+                      <tr key={idx}>
+                        <td style={{ fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{h.hsn || 'Unassigned'}</td>
+                        <td className="num-mono">₹{h.taxable?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}</td>
+                        <td className="num-mono" style={{ color: 'var(--color-success)' }}>
+                          ₹{h.taxAmount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+                        </td>
+                        <td className="num-mono" style={{ fontWeight: 700, color: 'var(--accent-primary)' }}>
+                          ₹{((h.taxable || 0) + (h.taxAmount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 6: PROFIT & LOSS */}
+      {activeTab === 'profit' && profitReport && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          <div className="glass-panel" style={{ padding: '1.5rem' }}>
+            <h2>Profit & Loss (P&L) Statement</h2>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
+              <div className="kpi-card">
+                <div className="kpi-header"><span className="kpi-title">Net Sales Revenue</span></div>
+                <div className="kpi-value" style={{ color: 'var(--color-success)' }}>₹{profitReport.netSales?.toLocaleString() || 0}</div>
+              </div>
+              <div className="kpi-card">
+                <div className="kpi-header"><span className="kpi-title">Cost of Goods Sold (COGS)</span></div>
+                <div className="kpi-value" style={{ color: 'var(--color-danger)' }}>₹{profitReport.cogs?.toLocaleString() || 0}</div>
+              </div>
+              <div className="kpi-card">
+                <div className="kpi-header"><span className="kpi-title">Gross Profit</span></div>
+                <div className="kpi-value">₹{profitReport.grossProfit?.toLocaleString() || 0}</div>
+              </div>
+              <div className="kpi-card">
+                <div className="kpi-header"><span className="kpi-title">Total Expenses</span></div>
+                <div className="kpi-value" style={{ color: 'var(--color-danger)' }}>₹{profitReport.totalExpenses?.toLocaleString() || 0}</div>
+              </div>
+              <div className="kpi-card">
+                <div className="kpi-header"><span className="kpi-title">Net Profit</span></div>
+                <div className="kpi-value" style={{ color: profitReport.netProfit >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                  ₹{profitReport.netProfit?.toLocaleString() || 0}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

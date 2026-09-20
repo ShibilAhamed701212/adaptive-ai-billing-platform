@@ -6,6 +6,9 @@ export interface IInvoiceDoc extends Document, Omit<IInvoiceData, '_id' | 'organ
   organizationId: mongoose.Types.ObjectId;
   customerId: mongoose.Types.ObjectId;
   createdBy: mongoose.Types.ObjectId;
+  loyaltyPointsRedeemed?: number;
+  loyaltyDiscountAmount?: number;
+  customerLoyaltyPointsBalance?: number;
 }
 
 const InvoiceItemSchema = new Schema(
@@ -41,10 +44,10 @@ const InvoiceSchema = new Schema<IInvoiceDoc>(
   {
     organizationId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
     invoiceNumber: { type: String, required: true, trim: true },
-    customerId: { type: Schema.Types.ObjectId, ref: 'Customer', required: true, index: true },
+    customerId: { type: Schema.Types.ObjectId, ref: 'Customer', required: false, index: true },
     customerSnapshot: {
-      name: { type: String, required: true },
-      email: { type: String, required: true },
+      name: { type: String, required: true, default: 'Walk-in Customer' },
+      email: { type: String, default: 'walkin@pos.local' },
       phone: String,
       companyName: String,
       gstinOrTaxId: String,
@@ -68,6 +71,9 @@ const InvoiceSchema = new Schema<IInvoiceDoc>(
     grandTotal: { type: Number, required: true },
     amountPaid: { type: Number, default: 0 },
     amountDue: { type: Number, required: true },
+    amountTendered: { type: Number },
+    changeGiven: { type: Number },
+    shiftId: { type: Schema.Types.ObjectId, ref: 'Shift', index: true },
     status: {
       type: String,
       enum: ['draft', 'pending_approval', 'approved', 'sent', 'partially_paid', 'paid', 'overdue', 'void', 'cancelled'],
@@ -86,11 +92,15 @@ const InvoiceSchema = new Schema<IInvoiceDoc>(
         reference: String,
       },
     ],
-    pdfUrl: String,
-    aiRiskScore: { type: String, enum: ['LOW', 'MEDIUM', 'HIGH'], default: 'LOW' },
-    aiRiskExplanation: String,
-    predictedPaymentDate: String,
+    pdfUrl: { type: String },
+    aiRiskScore: { type: String, enum: ['LOW', 'MEDIUM', 'HIGH'] },
+    aiRiskExplanation: { type: String },
+    predictedPaymentDate: { type: String },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    clientTransactionId: { type: String },
+    loyaltyPointsRedeemed: { type: Number, default: 0 },
+    loyaltyDiscountAmount: { type: Number, default: 0 },
+    customerLoyaltyPointsBalance: { type: Number },
   },
   { timestamps: true }
 );

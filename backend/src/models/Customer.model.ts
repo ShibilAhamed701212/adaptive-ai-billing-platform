@@ -30,6 +30,8 @@ const CustomerSchema = new Schema<ICustomerDoc>(
     },
     creditLimit: { type: Number, default: 0 },
     outstandingBalance: { type: Number, default: 0 },
+    storeCreditBalance: { type: Number, default: 0 },
+    loyaltyPoints: { type: Number, default: 0 },
     currency: { type: String, default: 'INR' },
     tags: [{ type: String, trim: true }],
     customFields: { type: Schema.Types.Mixed, default: {} },

@@ -18,6 +18,14 @@ import { ProductsPage } from './pages/products/ProductsPage';
 import { SettingsPage } from './pages/settings/SettingsPage';
 import { AuditLogsPage } from './pages/audit/AuditLogsPage';
 import { PointOfSalePage } from './pages/pos/PointOfSalePage';
+import { SuppliersPage } from './pages/suppliers/SuppliersPage';
+import { PurchasesPage } from './pages/purchases/PurchasesPage';
+import { ReturnsPage } from './pages/returns/ReturnsPage';
+import { ShiftsPage } from './pages/shifts/ShiftsPage';
+import { ExpensesPage } from './pages/expenses/ExpensesPage';
+import { InventoryPage } from './pages/inventory/InventoryPage';
+import { HeldBillsPage } from './pages/held-bills/HeldBillsPage';
+import { BackupPage } from './pages/backup/BackupPage';
 import { InvoiceCopilotDraft } from '@billing/shared';
 
 function RouterShell() {
@@ -34,10 +42,6 @@ function RouterShell() {
   }, []);
 
   const navigate = (path: string) => {
-    if (user && organization && !organization.isOnboarded && path !== '/onboarding') {
-      alert("Please complete the AI Business Architect setup first, or click 'Skip' at the bottom to continue with defaults.");
-      return;
-    }
     window.history.pushState({}, '', path);
     setCurrentPath(path);
   };
@@ -47,11 +51,7 @@ function RouterShell() {
     navigate('/invoices/create');
   };
 
-  useEffect(() => {
-    if (!isLoading && user && organization && !organization.isOnboarded && currentPath !== '/onboarding') {
-      navigate('/onboarding');
-    }
-  }, [user, organization, isLoading, currentPath]);
+  // Allow direct navigation to all modules
 
   if (isLoading) {
     return (
@@ -132,6 +132,47 @@ function RouterShell() {
       return <PointOfSalePage />;
     }
 
+    if (currentPath === '/suppliers') {
+      return <SuppliersPage />;
+    }
+
+    if (currentPath === '/purchases') {
+      return <PurchasesPage />;
+    }
+
+    if (currentPath === '/returns') {
+      return <ReturnsPage />;
+    }
+
+    if (currentPath === '/shifts') {
+      return <ShiftsPage />;
+    }
+
+    if (currentPath === '/expenses') {
+      return <ExpensesPage />;
+    }
+
+    if (currentPath === '/inventory') {
+      return <InventoryPage />;
+    }
+
+    if (currentPath === '/held-bills') {
+      return <HeldBillsPage onNavigate={navigate} />;
+    }
+
+    if (currentPath === '/backup') {
+      if (user?.role !== 'admin') {
+        return (
+          <div style={{ padding: '2rem', textAlign: 'center', marginTop: '10vh' }}>
+            <h2 style={{ color: 'var(--color-danger)' }}>Access Denied</h2>
+            <p>Only administrators can access backup and restore.</p>
+            <button className="btn btn-secondary" onClick={() => navigate('/dashboard')} style={{ marginTop: '1rem' }}>Return to Dashboard</button>
+          </div>
+        );
+      }
+      return <BackupPage />;
+    }
+
     if (currentPath === '/settings') {
       if (user?.role !== 'admin' && user?.role !== 'manager') {
         return (
@@ -172,10 +213,14 @@ function RouterShell() {
   );
 }
 
+import { POSCartProvider } from './context/POSCartContext';
+
 export function App() {
   return (
     <AuthProvider>
-      <RouterShell />
+      <POSCartProvider>
+        <RouterShell />
+      </POSCartProvider>
     </AuthProvider>
   );
 }

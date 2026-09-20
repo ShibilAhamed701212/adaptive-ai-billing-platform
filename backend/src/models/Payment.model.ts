@@ -12,14 +12,14 @@ const PaymentSchema = new Schema<IPaymentDoc>(
   {
     organizationId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
     invoiceId: { type: Schema.Types.ObjectId, ref: 'Invoice', required: true, index: true },
-    customerId: { type: Schema.Types.ObjectId, ref: 'Customer', required: true, index: true },
-    amount: { type: Number, required: true, min: 0.01 },
+    customerId: { type: Schema.Types.ObjectId, ref: 'Customer', required: false, index: true },
+    amount: { type: Number, required: true },
     currency: { type: String, default: 'INR' },
     paymentDate: { type: String, required: true },
     paymentMethod: {
       type: String,
-      enum: ['bank_transfer', 'credit_card', 'debit_card', 'upi', 'cash', 'stripe', 'razorpay', 'cheque', 'other'],
-      default: 'bank_transfer',
+      enum: ['bank_transfer', 'credit_card', 'debit_card', 'upi', 'cash', 'card', 'store_credit', 'loyalty_points', 'stripe', 'razorpay', 'cheque', 'other'],
+      default: 'cash',
     },
     transactionReference: String,
     status: {
