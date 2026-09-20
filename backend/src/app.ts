@@ -1,6 +1,8 @@
 import express, { Express } from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
+import path from 'path';
+import fs from 'fs';
 import { errorHandler } from './core/middleware/error.middleware';
 import { rateLimiter } from './core/middleware/rate-limiter.middleware';
 
@@ -38,15 +40,23 @@ export function createApp(): Express {
   app.use(morgan('dev'));
   app.use(rateLimiter);
 
-  // Root Endpoint
-  app.get('/', (req, res) => {
-    res.json({
-      message: 'Adaptive AI-Powered Billing API Server is running',
-      frontendUrl: 'http://localhost:5173',
-      healthCheck: '/api/v1/health',
-      version: '1.1.0',
+  // Serve frontend static build if present (Unified Render Deployment)
+  const frontendDistPath = path.resolve(__dirname, '../../frontend/dist');
+  const hasFrontendDist = fs.existsSync(frontendDistPath);
+
+  if (hasFrontendDist) {
+    app.use(express.static(frontendDistPath));
+  } else {
+    // Root Endpoint when running API-only mode
+    app.get('/', (req, res) => {
+      res.json({
+        message: 'Adaptive AI-Powered Billing API Server is running',
+        frontendUrl: 'http://localhost:5173',
+        healthCheck: '/api/v1/health',
+        version: '1.1.0',
+      });
     });
-  });
+  }
 
   // Health Check
   app.get('/api/v1/health', (req, res) => {
@@ -107,7 +117,15 @@ export function createApp(): Express {
   app.use('/api/v1/expenses', expenseRoutes);
   app.use('/api/v1/system', systemRoutes);
 
-  // 404 Handler
+  // SPA Client-Side Routing Fallback
+  if (hasFrontendDist) {
+    app.get('*', (req, res, next) => {
+      if (req.originalUrl.startsWith('/api')) return next();
+      res.sendFile(path.join(frontendDistPath, 'index.html'));
+    });
+  }
+
+  // 404 Handler for API routes (or all unmatched routes if frontend is not present)
   app.use((req, res) => {
     res.status(404).json({
       success: false,
