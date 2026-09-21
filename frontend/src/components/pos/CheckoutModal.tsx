@@ -149,11 +149,12 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           </div>
         </div>
 
-        <button 
-          onClick={handleSubmit} 
-          disabled={isProcessing}
-          style={{ width: '100%', marginTop: '2rem', padding: '1rem', background: 'var(--primary-color)', color: 'white', border: 'none', borderRadius: '8px', fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem' }}
-        >
+          <button 
+            onClick={handleSubmit} 
+            disabled={isProcessing}
+            className="btn btn-primary"
+            style={{ width: '100%', marginTop: '2rem', padding: '1rem', borderRadius: '8px', fontSize: '1.1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem' }}
+          >
           {isProcessing ? 'Processing...' : <><Check size={20} /> Complete Sale</>}
         </button>
       </div>

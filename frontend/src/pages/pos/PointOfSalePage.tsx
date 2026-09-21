@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Product, Customer } from '@billing/shared';
 import { ShoppingCart, ScanLine, X, Search, Check, Banknote, User, Tag, AlertTriangle, RefreshCw, Cloud } from 'lucide-react';
 import { CheckoutModal } from '../../components/pos/CheckoutModal';
+import { CustomerAutocomplete } from '../../components/pos/CustomerAutocomplete';
 import { QuickProductModal } from '../../components/pos/QuickProductModal';
 import { ThermalReceiptModal } from '../../components/pos/ThermalReceiptModal';
 import { queueOfflineSale, getQueuedSales, removeQueuedSale } from '../../utils/offlineDb';
@@ -444,17 +445,15 @@ export const PointOfSalePage: React.FC = () => {
           <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
             <User size={14} /> Assign customer (optional — walk-in allowed)
           </label>
-          <select 
-            className="form-select"
-            value={selectedCustomerId}
-            onChange={e => setSelectedCustomerId(e.target.value)}
-            style={{ width: '100%', fontSize: '0.9rem' }}
-          >
-            <option value="">-- Select Walk-in Customer --</option>
-            {customers.map(c => (
-              <option key={c._id as string} value={c._id as string}>{c.name}</option>
-            ))}
-          </select>
+          <CustomerAutocomplete 
+            customers={customers}
+            selectedCustomerId={selectedCustomerId}
+            onSelect={setSelectedCustomerId}
+            onCustomerAdded={(c) => {
+              setCustomers(prev => [...prev, c]);
+              setSelectedCustomerId(c._id as string);
+            }}
+          />
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>

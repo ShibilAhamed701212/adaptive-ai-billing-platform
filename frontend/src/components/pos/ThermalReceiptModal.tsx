@@ -169,7 +169,7 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({ isOpen
           <button onClick={onClose} style={{ flex: 1, padding: '0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'transparent', cursor: 'pointer' }}>
             Close
           </button>
-          <button onClick={handlePrint} style={{ flex: 2, padding: '0.75rem', borderRadius: '6px', border: 'none', background: 'var(--primary-color)', color: '#fff', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+          <button onClick={handlePrint} className="btn btn-primary" style={{ flex: 2, padding: '0.75rem', borderRadius: '6px', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: 'pointer' }}>
             <Printer size={18} /> Print Thermal Receipt
           </button>
         </div>
