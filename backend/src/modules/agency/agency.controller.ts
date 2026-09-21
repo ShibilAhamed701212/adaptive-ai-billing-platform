@@ -129,7 +129,12 @@ export async function listRetainers(req: Request, res: Response, next: NextFunct
 export async function createRetainer(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const orgId = req.tenant!.organizationId;
-    const { clientId, amount, startDate, endDate, status } = req.body;
+    const { clientId, amount, billingPeriod, status } = req.body;
+
+    if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Retainer amount must be greater than zero' } });
+      return;
+    }
 
     const client = await CustomerModel.findOne({ _id: new mongoose.Types.ObjectId(clientId), organizationId: new mongoose.Types.ObjectId(orgId) });
     if (!client) {
@@ -140,9 +145,10 @@ export async function createRetainer(req: Request, res: Response, next: NextFunc
     const retainer = await RetainerModel.create({
       organizationId: new mongoose.Types.ObjectId(orgId),
       clientId: client._id,
-      amount, usedAmount: 0,
-      startDate: startDate || new Date(),
-      endDate, status: status || 'active'
+      amount: Number(amount),
+      remainingBalance: Number(amount),
+      billingPeriod: ['monthly', 'quarterly', 'annual'].includes(billingPeriod) ? billingPeriod : 'monthly',
+      status: ['active', 'exhausted', 'cancelled'].includes(status) ? status : 'active',
     });
 
     res.status(201).json({ success: true, data: retainer });

@@ -3,6 +3,8 @@ import jwt from 'jsonwebtoken';
 import { ENV } from '../../config/env';
 import { TenantContext } from '@billing/shared';
 import { OrganizationModel } from '../../models/Organization.model';
+import { MembershipModel } from '../../models/Membership.model';
+import { UserModel } from '../../models/User.model';
 
 // Extend express Request
 declare global {
@@ -13,10 +15,16 @@ declare global {
   }
 }
 
-export function tenantMiddleware(req: Request, res: Response, next: NextFunction): void {
+export async function tenantMiddleware(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const cookieToken = req.headers.cookie
+      ?.split(';')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith('billing_session='))
+      ?.slice('billing_session='.length);
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : cookieToken;
+    if (!token) {
       res.status(401).json({
         success: false,
         error: { code: 'UNAUTHORIZED', message: 'Authentication token is missing' },
@@ -24,7 +32,6 @@ export function tenantMiddleware(req: Request, res: Response, next: NextFunction
       return;
     }
 
-    const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, ENV.JWT_SECRET) as TenantContext;
 
     if (!decoded.organizationId || !decoded.userId) {
@@ -35,7 +42,26 @@ export function tenantMiddleware(req: Request, res: Response, next: NextFunction
       return;
     }
 
-    req.tenant = decoded;
+    // A JWT is a short-lived credential, not the source of truth for access. Re-read
+    // the user and membership so a role change or deactivation takes effect immediately.
+    const [user, membership] = await Promise.all([
+      UserModel.findById(decoded.userId).select('isActive'),
+      MembershipModel.findOne({
+        userId: decoded.userId,
+        organizationId: decoded.organizationId,
+        status: 'active',
+      }).select('role'),
+    ]);
+
+    if (!user || user.isActive === false || !membership) {
+      res.status(401).json({
+        success: false,
+        error: { code: 'SESSION_REVOKED', message: 'Your organization access is no longer active' },
+      });
+      return;
+    }
+
+    req.tenant = { ...decoded, role: membership.role };
     next();
   } catch (err: any) {
     res.status(401).json({

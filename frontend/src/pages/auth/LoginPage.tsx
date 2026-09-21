@@ -26,7 +26,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
       });
 
       if (res.success && res.data) {
-        login(res.data.token, res.data.user, res.data.organization, res.data.memberships || []);
+        login(res.data.token || '', res.data.user, res.data.organization, res.data.memberships || []);
         onNavigate('/dashboard');
       } else {
         setError(res.error?.message || 'Login failed');

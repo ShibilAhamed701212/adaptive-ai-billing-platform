@@ -106,7 +106,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, onNavigate }) => 
         items: [
           { label: 'Invoices', desc: 'Recurring billing', path: '/invoices', icon: FileText, module: 'invoices' },
           { label: 'Payments', desc: 'Card processing', path: '/payments', icon: CreditCard, module: 'payments' },
-          { label: 'Usage Logs', desc: 'Metered billing', path: '/usage', icon: Activity, module: 'usage' },
         ],
       },
       analyticsGroup,
@@ -118,17 +117,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, onNavigate }) => 
         title: 'Agency',
         items: [
           { label: 'Dashboard', desc: 'Project overview', path: '/dashboard', icon: LayoutDashboard },
-          { label: 'Clients', desc: 'Accounts & contacts', path: '/clients', icon: Users, module: 'customers' },
+          { label: 'Clients', desc: 'Accounts & contacts', path: '/customers', icon: Users, module: 'customers' },
           { label: 'Projects', desc: 'Active engagements', path: '/projects', icon: Briefcase, module: 'projects' },
-          { label: 'Services', desc: 'Rate cards', path: '/services', icon: Layers, module: 'services' },
         ],
       },
       {
         title: 'Work & Billing',
         items: [
+          { label: 'Invoices', desc: 'Issue billing', path: '/invoices', icon: FileText, module: 'invoices' },
           { label: 'Timesheets', desc: 'Billable hours', path: '/timesheets', icon: Clock4, module: 'timesheets' },
           { label: 'Retainers', desc: 'Prepaid balances', path: '/retainers', icon: ShieldCheck, module: 'retainers' },
-          { label: 'Invoices', desc: 'Issue billing', path: '/invoices', icon: FileText, module: 'invoices' },
           { label: 'Payments', desc: 'Receivables', path: '/payments', icon: CreditCard, module: 'payments' },
           { label: 'Expenses', desc: 'Reimbursables', path: '/expenses', icon: Banknote, module: 'expenses' },
         ],

@@ -13,6 +13,7 @@
     "test:integration": "ts-node src/tests/pos.integration.test.ts",
     "test:saas": "ts-node src/tests/saas-flow.test.ts",
     "test:audit": "ts-node src/tests/logic-audit.test.ts",
+    "test:auth": "tsx src/tests/auth.middleware.test.ts",
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {

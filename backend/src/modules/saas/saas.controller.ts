@@ -19,9 +19,16 @@ export async function createPlan(req: Request, res: Response, next: NextFunction
     const orgId = req.tenant!.organizationId;
     const { name, code, description, price, currency, billingInterval, features, isPublic } = req.body;
 
+    if (!name || !Number.isFinite(Number(price)) || Number(price) < 0) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Plan name and a non-negative price are required' } });
+      return;
+    }
     const plan = await PlanModel.create({
       organizationId: new mongoose.Types.ObjectId(orgId),
-      name, code, description, price, currency, billingInterval, features, isPublic
+      name: String(name).trim(),
+      price: Number(price),
+      billingInterval: billingInterval === 'yearly' ? 'yearly' : 'monthly',
+      features: Array.isArray(features) ? features.filter((feature) => typeof feature === 'string').map((feature) => feature.trim()).filter(Boolean) : [],
     });
 
     res.status(201).json({ success: true, data: plan });
@@ -102,6 +109,10 @@ export async function createSubscription(req: Request, res: Response, next: Next
     const orgId = req.tenant!.organizationId;
     const { customerId, planId, status, startDate, renewalDate, cancelDate } = req.body;
 
+    if (!mongoose.Types.ObjectId.isValid(customerId) || !mongoose.Types.ObjectId.isValid(planId)) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'A valid customer and plan are required' } });
+      return;
+    }
     const [customer, plan] = await Promise.all([
       CustomerModel.findOne({ _id: new mongoose.Types.ObjectId(customerId), organizationId: new mongoose.Types.ObjectId(orgId) }),
       PlanModel.findOne({ _id: new mongoose.Types.ObjectId(planId), organizationId: new mongoose.Types.ObjectId(orgId) })
@@ -117,16 +128,23 @@ export async function createSubscription(req: Request, res: Response, next: Next
       return;
     }
 
-    const validStates = ['trialing', 'active', 'past_due', 'canceled', 'expired'];
+    const validStates = ['trialing', 'active', 'past_due', 'canceled', 'unpaid'];
     const validStatus = validStates.includes(status) ? status : 'active';
+    const start = startDate ? new Date(startDate) : new Date();
+    const renewal = renewalDate ? new Date(renewalDate) : new Date(start);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(renewal.getTime())) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid subscription date' } });
+      return;
+    }
+    if (!renewalDate) renewal.setFullYear(renewal.getFullYear() + (plan.billingInterval === 'yearly' ? 1 : 0), renewal.getMonth() + (plan.billingInterval === 'monthly' ? 1 : 0));
 
     const sub = await SubscriptionModel.create({
       organizationId: new mongoose.Types.ObjectId(orgId),
       customerId: customer._id,
       planId: plan._id,
       status: validStatus,
-      startDate: startDate || new Date(),
-      renewalDate: renewalDate,
+      startDate: start,
+      renewalDate: renewal,
       cancelDate: cancelDate
     });
 
@@ -159,7 +177,7 @@ export async function updateSubscription(req: Request, res: Response, next: Next
         active: ['past_due', 'canceled'],
         past_due: ['active', 'canceled'],
         canceled: [],
-        expired: []
+        unpaid: []
       };
 
       const currentStatus = sub.status || 'active';

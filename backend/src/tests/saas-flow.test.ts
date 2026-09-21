@@ -100,7 +100,7 @@ async function run() {
     check('Create organization returns 201', res.statusCode === 201);
     const orgBId = res.data?.data?.organization?._id;
     check('Create organization returns memberships (2)', (res.data?.data?.memberships || []).length === 2);
-    check('Create organization returns a fresh token', Boolean(res.data?.data?.token));
+    check('Create organization returns its active membership', Boolean(res.data?.data?.membershipId));
 
     // 6. Switch to a member organization succeeds
     res = mockRes();

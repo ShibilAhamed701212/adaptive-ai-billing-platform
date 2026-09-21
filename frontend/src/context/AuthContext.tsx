@@ -41,17 +41,16 @@ function readJSON<T>(key: string, fallback: T): T {
 }
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
-  const [user, setUser] = useState<User | null>(() => readJSON<User | null>(USER_KEY, null));
-  const [organization, setOrganization] = useState<Organization | null>(() => readJSON<Organization | null>(ORG_KEY, null));
-  const [memberships, setMemberships] = useState<Membership[]>(() => readJSON<Membership[]>(MEMBERSHIPS_KEY, []));
+  const [token, setToken] = useState<string | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [organization, setOrganization] = useState<Organization | null>(null);
+  const [memberships, setMemberships] = useState<Membership[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const persist = useCallback((nextToken: string | null, nextUser: User | null, nextOrg: Organization | null, nextMemberships: Membership[]) => {
-    if (nextToken) localStorage.setItem(TOKEN_KEY, nextToken);
-    if (nextUser) localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
-    if (nextOrg) localStorage.setItem(ORG_KEY, JSON.stringify(nextOrg));
-    localStorage.setItem(MEMBERSHIPS_KEY, JSON.stringify(nextMemberships));
+    // Sessions live in an HTTP-only cookie. Keep this argument-compatible helper
+    // so callers update React state without putting credentials in web storage.
+    void nextToken; void nextUser; void nextOrg; void nextMemberships;
   }, []);
 
   const login = (newToken: string, newUser: User, newOrg: Organization, newMemberships: Membership[] = []) => {
@@ -63,11 +62,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
+    void apiRequest('/auth/logout', { method: 'POST' });
     setToken(null);
     setUser(null);
     setOrganization(null);
     setMemberships([]);
-    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(TOKEN_KEY); // remove legacy sessions created by older builds
     localStorage.removeItem(USER_KEY);
     localStorage.removeItem(ORG_KEY);
     localStorage.removeItem(MEMBERSHIPS_KEY);
@@ -80,16 +80,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const refreshProfile = async () => {
-    const storedToken = localStorage.getItem(TOKEN_KEY);
-    if (!storedToken) {
-      setIsLoading(false);
-      return;
-    }
-
     try {
       const res = await apiRequest<{ token?: string; user: User; organization: Organization; memberships: Membership[] }>('/auth/me');
       if (res.success && res.data) {
-        const nextToken = res.data.token || storedToken;
+        const nextToken = res.data.token || null;
         setToken(nextToken);
         setUser(res.data.user);
         setOrganization(res.data.organization);
@@ -107,7 +101,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const applySession = (res: any): boolean => {
     if (res.success && res.data) {
-      const nextToken = res.data.token;
+      const nextToken = res.data.token || '';
       const nextUser = res.data.user;
       const nextOrg = res.data.organization;
       const nextMemberships = res.data.memberships || [];

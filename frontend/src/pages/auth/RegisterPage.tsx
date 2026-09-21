@@ -30,7 +30,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
       });
 
       if (res.success && res.data) {
-        login(res.data.token, res.data.user, res.data.organization, res.data.memberships || []);
+        login(res.data.token || '', res.data.user, res.data.organization, res.data.memberships || []);
         onNavigate('/onboarding');
       } else {
         let errMsg = res.error?.message || 'Registration failed';

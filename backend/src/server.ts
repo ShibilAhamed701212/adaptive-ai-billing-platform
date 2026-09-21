@@ -1,10 +1,11 @@
 import { createApp } from './app';
 import { connectDB } from './config/db';
-import { ENV } from './config/env';
+import { ENV, validateRuntimeEnvironment } from './config/env';
 
 import { startCronJobs } from './jobs/scheduler';
 
 async function bootstrap() {
+  validateRuntimeEnvironment();
   await connectDB();
   const app = createApp();
 

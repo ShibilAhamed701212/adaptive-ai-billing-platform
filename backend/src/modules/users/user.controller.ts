@@ -8,9 +8,16 @@ import { logAuditEvent } from '../../core/audit/audit.service';
 export async function listUsers(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const orgId = req.tenant!.organizationId;
-    const users = await UserModel.find({ organizationId: new mongoose.Types.ObjectId(orgId) })
-      .select('-passwordHash')
+    const memberships = await MembershipModel.find({ organizationId: new mongoose.Types.ObjectId(orgId) })
+      .populate({ path: 'userId', select: '-passwordHash' })
       .sort({ createdAt: -1 });
+    const users = memberships
+      .filter((membership: any) => membership.userId)
+      .map((membership: any) => ({
+        ...(membership.userId.toObject?.() || membership.userId),
+        role: membership.role,
+        isActive: membership.status === 'active',
+      }));
     res.json({ success: true, data: users });
   } catch (err) {
     next(err);
@@ -22,8 +29,13 @@ export async function createUser(req: Request, res: Response, next: NextFunction
     const orgId = req.tenant!.organizationId;
     const { name, email, password, role } = req.body;
 
-    if (!name || !email || !password) {
-      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Name, email, and password are required' } });
+    if (!name || !email || !String(email).includes('@')) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'A name and valid email address are required' } });
+      return;
+    }
+    const allowedRoles = ['admin', 'manager', 'accountant', 'sales', 'viewer'];
+    if (role && !allowedRoles.includes(role)) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid user role' } });
       return;
     }
 
@@ -31,24 +43,27 @@ export async function createUser(req: Request, res: Response, next: NextFunction
     const existing = await UserModel.findOne({ email: email.toLowerCase().trim() });
 
     if (existing) {
-      res.status(409).json({
-        success: false,
-        error: { code: 'USER_EXISTS', message: 'An account with this email already exists' },
+      const alreadyMember = await MembershipModel.exists({ userId: existing._id, organizationId: new mongoose.Types.ObjectId(orgId) });
+      if (alreadyMember) {
+        res.status(409).json({ success: false, error: { code: 'USER_EXISTS', message: 'This user already belongs to the organization' } });
+        return;
+      }
+      await MembershipModel.create({
+        userId: existing._id,
+        organizationId: new mongoose.Types.ObjectId(orgId),
+        role: role || 'viewer',
+        status: 'active',
       });
+      res.status(201).json({ success: true, data: { _id: existing._id, name: existing.name, email: existing.email, role: role || 'viewer', isActive: true } });
       return;
     }
-
+    if (!password || String(password).length < 8) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'New users need a password of at least 8 characters' } });
+      return;
+    }
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
-
-    const user = await UserModel.create({
-      organizationId: new mongoose.Types.ObjectId(orgId),
-      name: name.trim(),
-      email: email.toLowerCase().trim(),
-      passwordHash,
-      role: role || 'viewer',
-      isActive: true,
-    });
+    const user = await UserModel.create({ organizationId: new mongoose.Types.ObjectId(orgId), name: name.trim(), email: email.toLowerCase().trim(), passwordHash, role: role || 'viewer', isActive: true });
 
     // A membership is the source of truth for organization access + role.
     await MembershipModel.create({
@@ -90,19 +105,30 @@ export async function updateUser(req: Request, res: Response, next: NextFunction
     const userId = req.params.id;
     const { name, role, isActive, password } = req.body;
 
-    const user = await UserModel.findOne({
-      _id: userId,
-      organizationId: new mongoose.Types.ObjectId(orgId),
-    });
-
-    if (!user) {
+    const membership = await MembershipModel.findOne({ userId, organizationId: new mongoose.Types.ObjectId(orgId) });
+    const user = membership ? await UserModel.findById(userId) : null;
+    if (!user || !membership) {
       res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'User not found' } });
       return;
     }
 
+    const allowedRoles = ['admin', 'manager', 'accountant', 'sales', 'viewer'];
+    if (role && !allowedRoles.includes(role)) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid user role' } });
+      return;
+    }
+    if (password && String(password).length < 8) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Password must be at least 8 characters' } });
+      return;
+    }
+    if ((role && role !== 'admin') || isActive === false) {
+      const activeAdminCount = await MembershipModel.countDocuments({ organizationId: new mongoose.Types.ObjectId(orgId), role: 'admin', status: 'active' });
+      if (membership.role === 'admin' && membership.status === 'active' && activeAdminCount <= 1) {
+        res.status(400).json({ success: false, error: { code: 'LAST_ADMIN', message: 'Assign another active administrator before changing or disabling the last administrator' } });
+        return;
+      }
+    }
     if (name) user.name = name.trim();
-    if (role) user.role = role;
-    if (isActive !== undefined) user.isActive = Boolean(isActive);
     if (password) {
       const salt = await bcrypt.genSalt(10);
       user.passwordHash = await bcrypt.hash(password, salt);
@@ -110,17 +136,11 @@ export async function updateUser(req: Request, res: Response, next: NextFunction
 
     await user.save();
 
-    // Keep the organization membership role in sync with the user record.
-    await MembershipModel.updateOne(
-      { userId: user._id, organizationId: new mongoose.Types.ObjectId(orgId) },
-      {
-        ...(role ? { role } : {}),
-        ...(isActive !== undefined ? { status: isActive ? 'active' : 'disabled' } : {}),
-        userId: user._id,
-        organizationId: new mongoose.Types.ObjectId(orgId),
-      },
-      { upsert: true }
-    );
+    // Organization role and access are membership-scoped; do not deactivate a user in
+    // their other organizations when changing access here.
+    if (role) membership.role = role;
+    if (isActive !== undefined) membership.status = isActive ? 'active' : 'disabled';
+    await membership.save();
 
     await logAuditEvent({
       organizationId: orgId,
@@ -129,7 +149,7 @@ export async function updateUser(req: Request, res: Response, next: NextFunction
       action: 'UPDATE_USER',
       entityType: 'User',
       entityId: String(user._id),
-      details: { email: user.email, role: user.role, isActive: user.isActive },
+      details: { email: user.email, role: membership.role, isActive: membership.status === 'active' },
     });
 
     res.json({
@@ -138,8 +158,8 @@ export async function updateUser(req: Request, res: Response, next: NextFunction
         _id: user._id,
         name: user.name,
         email: user.email,
-        role: user.role,
-        isActive: user.isActive,
+        role: membership.role,
+        isActive: membership.status === 'active',
       },
     });
   } catch (err) {

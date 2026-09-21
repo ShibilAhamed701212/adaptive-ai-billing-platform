@@ -21,10 +21,10 @@ An intelligent, multi-tenant billing, invoicing, and revenue management platform
 - **⚡ Modern Frontend Dashboard**:
   - Built with React 19, Vite, and Lucide icons.
   - Interactive invoice builder, customer ledger, and revenue analytics charts.
-- **🔒 Enterprise Security**:
-  - JWT authentication with secure HTTP cookies and password hashing via Bcrypt.
-  - Strict input validation powered by Zod schemas.
-- **🐳 Container Ready**: Out-of-the-box `docker-compose.yml` for MongoDB, backend services, and cache orchestration.
+- **🔒 Access control**:
+  - Bearer-token authentication, password hashing via Bcrypt, and organization membership-based roles.
+  - Every protected request re-checks the active membership, so role changes and access revocation apply immediately.
+- **🐳 Local infrastructure**: `docker-compose.yml` starts MongoDB and Redis for development.
 
 ---
 
@@ -81,8 +81,10 @@ PORT=5000
 NODE_ENV=development
 CLIENT_URL=http://localhost:5173
 MONGODB_URI=mongodb://localhost:27017/adaptive_billing
-JWT_SECRET=your_super_secret_jwt_key_here
+JWT_SECRET=replace_with_a_unique_32_plus_character_secret
 ```
+
+`CLIENT_URL` may contain a comma-separated list of permitted browser origins. In production, `JWT_SECRET` is mandatory and the server rejects the development placeholder.
 
 ### 3. Seed Demo Data (Optional)
 ```bash
@@ -101,19 +103,26 @@ npm run dev
 
 ## 🐳 Docker Deployment
 
-Run the complete stack with Docker Compose:
+Start local MongoDB and Redis with Docker Compose:
 ```bash
-docker-compose up --build
+docker-compose up -d
 ```
+
+Build and run the application separately with `npm run build`, then `npm run dev` for development or `npm run start --workspace=backend` for the compiled API.
 
 ---
 
 ## 🧪 Testing & Quality
 
-Run test suites across workspaces:
+Run the fast unit test and the available integration suites:
 ```bash
 npm run test
+npm run test:saas --workspace=backend
+npm run test:integration --workspace=backend
+npm run test:pos --workspace=backend
 ```
+
+The Playwright specifications expect a running frontend, API, and seeded demo data; run `npm run test:e2e --workspace=frontend` only after those services are available.
 
 ---
 

@@ -12,6 +12,9 @@ export const ALL_MODULES = [
   'payments',
   'reports',
   'ai_copilot',
+  'credit_notes',
+  'approvals',
+  'team',
   
   // Retail specific
   'pos',
@@ -33,11 +36,10 @@ export const ALL_MODULES = [
   'timesheets',
   'retainers',
 
-  // General specific (can be shared)
+  // Shared operations
   'expenses',
-  'credit_notes',
-  'approvals',
-  'team',
+  'returns',
+  'shifts',
 ] as const;
 
 export type ModuleKey = (typeof ALL_MODULES)[number];
@@ -48,12 +50,10 @@ export const MODULE_PRESETS: Record<BusinessType, string[]> = {
     'inventory',
     'products',
     'customers',
-    'sales',
     'invoices',
     'payments',
     'suppliers',
     'reports',
-    'settings',
     'ai_copilot'
   ],
   saas: [
@@ -63,10 +63,8 @@ export const MODULE_PRESETS: Record<BusinessType, string[]> = {
     'invoices',
     'payments',
     'usage',
-    'revenue',
     'churn',
     'reports',
-    'settings',
     'ai_copilot'
   ],
   services: [ // Agency
@@ -79,18 +77,15 @@ export const MODULE_PRESETS: Record<BusinessType, string[]> = {
     'payments',
     'retainers',
     'reports',
-    'settings',
     'ai_copilot'
   ],
   general: [
     'products',
     'customers',
-    'sales',
     'invoices',
     'payments',
     'expenses',
     'reports',
-    'settings',
     'ai_copilot'
   ],
 };

@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { errorHandler } from './core/middleware/error.middleware';
 import { rateLimiter } from './core/middleware/rate-limiter.middleware';
+import { ENV } from './config/env';
 
 import authRoutes from './modules/auth/auth.routes';
 import orgRoutes from './modules/organizations/organization.routes';
@@ -36,7 +37,15 @@ export function createApp(): Express {
   const app = express();
 
   // Global Middleware
-  app.use(cors({ origin: true, credentials: true }));
+  const allowedOrigins = ENV.CLIENT_URL.split(',').map((origin) => origin.trim()).filter(Boolean);
+  app.use(cors({
+    credentials: true,
+    origin(origin, callback) {
+      // Non-browser clients have no Origin header. Browser origins must be explicitly allowed.
+      if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(null, false);
+    },
+  }));
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
   app.use(morgan('dev'));

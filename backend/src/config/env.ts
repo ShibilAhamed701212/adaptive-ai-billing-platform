@@ -15,3 +15,10 @@ export const ENV = {
   OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
   GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
 };
+
+/** Fail fast rather than serving production traffic with a public development secret. */
+export function validateRuntimeEnvironment(): void {
+  if (ENV.NODE_ENV === 'production' && (!process.env.JWT_SECRET || ENV.JWT_SECRET.includes('super_secret'))) {
+    throw new Error('JWT_SECRET must be set to a strong, non-default value in production');
+  }
+}

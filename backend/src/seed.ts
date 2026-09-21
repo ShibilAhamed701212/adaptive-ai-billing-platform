@@ -52,7 +52,7 @@ export async function seedDatabase() {
     billingModel: 'retail',
     businessType: 'retail',
     isOnboarded: true,
-    enabledModules: ['pos', 'inventory', 'products', 'customers', 'sales', 'invoices', 'payments', 'suppliers', 'reports', 'settings', 'ai_copilot'],
+    enabledModules: ['pos', 'inventory', 'products', 'customers', 'invoices', 'payments', 'suppliers', 'purchases', 'returns', 'shifts', 'expenses', 'reports', 'ai_copilot'],
     settings: { currency: 'INR', currencySymbol: '₹', timezone: 'Asia/Kolkata', taxSystem: 'GST', invoicePrefix: 'RET', nextInvoiceNumber: 1001 }
   });
   const retailAdmin = await UserModel.create({ organizationId: orgRetail._id, name: 'Retail Admin', email: 'admin@retail.test', passwordHash, role: 'admin', isActive: true });
@@ -127,7 +127,7 @@ export async function seedDatabase() {
   console.log('Creating SaaS Tenant...');
   const orgSaas = await OrganizationModel.create({
     name: 'CloudSync SaaS', slug: 'cloudsync', billingModel: 'subscription', businessType: 'saas', isOnboarded: true,
-    enabledModules: ['plans', 'subscriptions', 'customers', 'invoices', 'payments', 'usage', 'revenue', 'churn', 'reports', 'settings', 'ai_copilot'],
+    enabledModules: ['plans', 'subscriptions', 'customers', 'invoices', 'payments', 'usage', 'churn', 'reports', 'ai_copilot'],
     settings: { currency: 'USD', currencySymbol: '$', timezone: 'America/New_York', taxSystem: 'NONE', invoicePrefix: 'CSYNC', nextInvoiceNumber: 2001 }
   });
   const saasAdmin = await UserModel.create({ organizationId: orgSaas._id, name: 'SaaS Admin', email: 'admin@saas.test', passwordHash, role: 'admin', isActive: true });
@@ -181,7 +181,7 @@ export async function seedDatabase() {
   console.log('Creating Agency Tenant...');
   const orgAgency = await OrganizationModel.create({
     name: 'Creativa Agency', slug: 'creativa', billingModel: 'professional_services', businessType: 'services', isOnboarded: true,
-    enabledModules: ['customers', 'projects', 'services', 'timesheets', 'expenses', 'invoices', 'payments', 'retainers', 'reports', 'settings', 'ai_copilot'],
+    enabledModules: ['customers', 'projects', 'services', 'timesheets', 'expenses', 'invoices', 'payments', 'retainers', 'reports', 'ai_copilot'],
     settings: { currency: 'EUR', currencySymbol: '€', timezone: 'Europe/Paris', taxSystem: 'VAT', invoicePrefix: 'CRV', nextInvoiceNumber: 3001 }
   });
   const agencyAdmin = await UserModel.create({ organizationId: orgAgency._id, name: 'Agency Admin', email: 'admin@agency.test', passwordHash, role: 'admin', isActive: true });
@@ -218,7 +218,7 @@ export async function seedDatabase() {
   console.log('Creating General Tenant...');
   const orgGen = await OrganizationModel.create({
     name: 'Acme Corp', slug: 'acme', billingModel: 'custom', businessType: 'general', isOnboarded: true,
-    enabledModules: ['products', 'customers', 'sales', 'invoices', 'payments', 'expenses', 'reports', 'settings', 'ai_copilot'],
+    enabledModules: ['products', 'customers', 'invoices', 'payments', 'expenses', 'reports', 'ai_copilot'],
     settings: { currency: 'USD', currencySymbol: '$', timezone: 'America/Los_Angeles', taxSystem: 'SALES_TAX', invoicePrefix: 'ACM', nextInvoiceNumber: 4001 }
   });
   const genAdmin = await UserModel.create({ organizationId: orgGen._id, name: 'Gen Admin', email: 'admin@general.test', passwordHash, role: 'admin', isActive: true });

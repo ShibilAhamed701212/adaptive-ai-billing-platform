@@ -9,19 +9,19 @@ test.describe('Adaptive AI Billing & POS Platform E2E Tests', () => {
     await expect(page.locator('h1')).toContainText('Welcome Back');
 
     // Fill in demo credentials
-    await page.fill('input[type="email"]', 'admin@nexuscloud.io');
+    await page.fill('input[type="email"]', 'admin@retail.test');
     await page.fill('input[type="password"]', 'Admin@123456');
 
     // Submit form
     await page.click('button:has-text("Sign In to Workspace")');
 
     // Should load the dashboard
-    await expect(page.locator('text=Executive Dashboard')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('h1')).toContainText('FreshMart Supermarket', { timeout: 10000 });
   });
 
   test('2. Navigation & POS Interface', async ({ page }) => {
     await page.goto('/');
-    await page.fill('input[type="email"]', 'admin@nexuscloud.io');
+    await page.fill('input[type="email"]', 'admin@retail.test');
     await page.fill('input[type="password"]', 'Admin@123456');
     await page.click('button:has-text("Sign In to Workspace")');
 
@@ -29,7 +29,7 @@ test.describe('Adaptive AI Billing & POS Platform E2E Tests', () => {
     await expect(page.locator('text=AdaptiveBilling')).toBeVisible({ timeout: 10000 });
 
     // Click on Point of Sale (POS) from Sidebar
-    await page.click('button:has-text("Point of Sale (POS)")');
+    await page.click('button:has-text("Point of Sale")');
 
     // Verify POS container mounts
     await expect(page.locator('text=Point of Sale')).toBeVisible({ timeout: 10000 });
@@ -37,7 +37,7 @@ test.describe('Adaptive AI Billing & POS Platform E2E Tests', () => {
 
   test('3. Operational Pages Navigation Test', async ({ page }) => {
     await page.goto('/');
-    await page.fill('input[type="email"]', 'admin@nexuscloud.io');
+    await page.fill('input[type="email"]', 'admin@retail.test');
     await page.fill('input[type="password"]', 'Admin@123456');
     await page.click('button:has-text("Sign In to Workspace")');
 
@@ -45,7 +45,7 @@ test.describe('Adaptive AI Billing & POS Platform E2E Tests', () => {
 
     // Navigate to Customers
     await page.click('button:has-text("Customers")');
-    await expect(page.locator('text=Customer Accounts')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=Customer Directory')).toBeVisible({ timeout: 10000 });
 
     // Navigate to Financial Reports
     await page.click('button:has-text("Financial Reports")');

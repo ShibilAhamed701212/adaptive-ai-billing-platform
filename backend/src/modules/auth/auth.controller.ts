@@ -14,6 +14,7 @@ import {
   type BusinessType,
 } from '@billing/shared';
 import mongoose from 'mongoose';
+import { setSessionCookie, clearSessionCookie } from '../../core/security/session-cookie';
 
 function inferBusinessType(billingModel?: string): BusinessType {
   switch (billingModel) {
@@ -201,10 +202,10 @@ export async function register(req: Request, res: Response, next: NextFunction):
 
     const payload = await buildSessionPayload(user, String(organization._id));
 
+    setSessionCookie(res, payload!.token);
     res.status(201).json({
       success: true,
       data: {
-        token: payload!.token,
         user: { ...payload!.user, role: user.role },
         organization: payload!.organization,
         memberships: payload!.memberships,
@@ -289,7 +290,9 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
       await user.save();
     }
 
-    res.json({ success: true, data: payload });
+    setSessionCookie(res, payload.token);
+    const { token: _token, ...session } = payload;
+    res.json({ success: true, data: session });
   } catch (err) {
     next(err);
   }
@@ -316,7 +319,6 @@ export async function getMe(req: Request, res: Response, next: NextFunction): Pr
     res.json({
       success: true,
       data: {
-        token: payload?.token,
         user,
         organization,
         memberships: payload?.memberships || [],
@@ -325,4 +327,9 @@ export async function getMe(req: Request, res: Response, next: NextFunction): Pr
   } catch (err) {
     next(err);
   }
+}
+
+export async function logout(_req: Request, res: Response): Promise<void> {
+  clearSessionCookie(res);
+  res.status(204).end();
 }

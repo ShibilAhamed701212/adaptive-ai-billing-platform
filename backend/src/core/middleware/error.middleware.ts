@@ -112,7 +112,6 @@ export function errorHandler(
     error: {
       code: err.code || 'SERVER_ERROR',
       message,
-      ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
     },
   });
 }

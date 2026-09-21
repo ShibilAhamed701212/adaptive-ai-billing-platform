@@ -1,72 +1,61 @@
 import { Request, Response, NextFunction } from 'express';
+import mongoose, { Schema } from 'mongoose';
 
 /**
- * Simple in-memory token-bucket rate limiter.
- * Tracks requests per IP (or per-tenant if authenticated) with a sliding window.
- * Returns 429 Too Many Requests when the limit is exceeded.
+ * Fixed-window rate limiting stored in MongoDB. Unlike a process-local map this
+ * is shared by every API instance using the same database. The small in-memory
+ * fallback keeps local development usable while MongoDB is reconnecting.
  */
+const MAX_REQUESTS = 200;
+const WINDOW_MS = 60_000;
+const memoryBuckets = new Map<string, { count: number; windowStart: number }>();
 
-interface BucketEntry {
-  tokens: number;
-  lastRefill: number;
+const RateLimitSchema = new Schema({
+  key: { type: String, required: true },
+  windowStart: { type: Number, required: true },
+  count: { type: Number, required: true, default: 0 },
+  expiresAt: { type: Date, required: true, expires: 0 },
+}, { versionKey: false });
+RateLimitSchema.index({ key: 1, windowStart: 1 }, { unique: true });
+const RateLimitModel = mongoose.models.ApiRateLimit || mongoose.model('ApiRateLimit', RateLimitSchema);
+
+function keyFor(req: Request): string {
+  return req.ip || req.socket.remoteAddress || 'unknown';
 }
 
-const buckets = new Map<string, BucketEntry>();
-
-// Configuration
-const MAX_REQUESTS = 200;        // requests per window
-const WINDOW_MS = 60 * 1000;     // 1 minute window
-const REFILL_RATE = MAX_REQUESTS / (WINDOW_MS / 1000); // tokens per second
-
-function getKey(req: Request): string {
-  // Prefer tenant-scoped key if authenticated, else fall back to IP
-  const tenantId = (req as any).tenant?.organizationId;
-  const ip = req.ip || req.socket.remoteAddress || 'unknown';
-  return tenantId ? `tenant:${tenantId}` : `ip:${ip}`;
+function allowInMemory(key: string, windowStart: number): boolean {
+  const existing = memoryBuckets.get(key);
+  const bucket = !existing || existing.windowStart !== windowStart ? { count: 0, windowStart } : existing;
+  bucket.count += 1;
+  memoryBuckets.set(key, bucket);
+  return bucket.count <= MAX_REQUESTS;
 }
 
-export function rateLimiter(req: Request, res: Response, next: NextFunction): void {
-  const key = getKey(req);
+export async function rateLimiter(req: Request, res: Response, next: NextFunction): Promise<void> {
   const now = Date.now();
+  const windowStart = Math.floor(now / WINDOW_MS) * WINDOW_MS;
+  const key = keyFor(req);
+  let allowed: boolean;
 
-  let bucket = buckets.get(key);
-  if (!bucket) {
-    bucket = { tokens: MAX_REQUESTS, lastRefill: now };
-    buckets.set(key, bucket);
+  try {
+    if (mongoose.connection.readyState !== 1) throw new Error('database unavailable');
+    const bucket: any = await RateLimitModel.findOneAndUpdate(
+      { key, windowStart },
+      { $inc: { count: 1 }, $setOnInsert: { expiresAt: new Date(windowStart + WINDOW_MS * 2) } },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    ).lean();
+    allowed = (bucket?.count || 0) <= MAX_REQUESTS;
+  } catch {
+    allowed = allowInMemory(key, windowStart);
   }
 
-  // Refill tokens based on elapsed time
-  const elapsed = (now - bucket.lastRefill) / 1000;
-  bucket.tokens = Math.min(MAX_REQUESTS, bucket.tokens + elapsed * REFILL_RATE);
-  bucket.lastRefill = now;
-
-  if (bucket.tokens < 1) {
-    res.status(429).json({
-      success: false,
-      error: {
-        code: 'RATE_LIMITED',
-        message: 'Too many requests. Please slow down.',
-        retryAfterMs: Math.ceil((1 - bucket.tokens) / REFILL_RATE * 1000),
-      },
-    });
+  const retryAfter = Math.max(1, Math.ceil((windowStart + WINDOW_MS - now) / 1000));
+  res.setHeader('X-RateLimit-Limit', String(MAX_REQUESTS));
+  res.setHeader('X-RateLimit-Reset', String(Math.ceil((windowStart + WINDOW_MS) / 1000)));
+  if (!allowed) {
+    res.setHeader('Retry-After', String(retryAfter));
+    res.status(429).json({ success: false, error: { code: 'RATE_LIMITED', message: 'Too many requests. Please slow down.', retryAfter } });
     return;
   }
-
-  bucket.tokens -= 1;
-
-  // Set rate-limit headers
-  res.setHeader('X-RateLimit-Limit', MAX_REQUESTS);
-  res.setHeader('X-RateLimit-Remaining', Math.floor(bucket.tokens));
-
   next();
 }
-
-// Periodic cleanup of stale entries (every 5 minutes)
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of buckets.entries()) {
-    if (now - entry.lastRefill > WINDOW_MS * 5) {
-      buckets.delete(key);
-    }
-  }
-}, 5 * 60 * 1000);

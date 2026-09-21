@@ -30,6 +30,8 @@ import { BackupPage } from './pages/backup/BackupPage';
 import { TeamPage } from './pages/team/TeamPage';
 import { NewOrganizationPage } from './pages/organizations/NewOrganizationPage';
 import { BillingTestPage } from './pages/dev/BillingTestPage';
+import { SaaSManagementPage } from './pages/saas/SaaSManagementPage';
+import { AgencyManagementPage } from './pages/agency/AgencyManagementPage';
 import { InvoiceCopilotDraft } from '@billing/shared';
 
 function AccessDenied({ onNavigate, message }: { onNavigate: (p: string) => void; message: string }) {
@@ -102,6 +104,11 @@ function RouterShell() {
 
     if (currentPath === '/invoices') return <InvoicesListPage onNavigate={navigate} />;
     if (currentPath === '/payments') return <PaymentsPage onNavigate={navigate} />;
+    if (currentPath === '/plans') return <SaaSManagementPage section="plans" />;
+    if (currentPath === '/subscriptions') return <SaaSManagementPage section="subscriptions" />;
+    if (currentPath === '/projects') return <AgencyManagementPage section="projects" />;
+    if (currentPath === '/timesheets') return <AgencyManagementPage section="timesheets" />;
+    if (currentPath === '/retainers') return <AgencyManagementPage section="retainers" />;
     if (currentPath === '/recurring') return <RecurringPage onNavigate={navigate} />;
     if (currentPath === '/credit-notes') return <CreditNotesPage onNavigate={navigate} />;
     if (currentPath === '/approvals') return <ApprovalsPage onNavigate={navigate} />;

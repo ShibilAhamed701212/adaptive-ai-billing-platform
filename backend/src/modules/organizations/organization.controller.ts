@@ -11,11 +11,21 @@ import { makeUniqueOrgSlug } from '../../core/utils/slug';
 import { ENV } from '../../config/env';
 import {
   modulesForBusinessType,
+  ALL_MODULES,
   BUSINESS_TYPE_BILLING_MODEL,
   type BusinessType,
 } from '@billing/shared';
+import { setSessionCookie } from '../../core/security/session-cookie';
 
 const VALID_BUSINESS_TYPES: BusinessType[] = ['retail', 'saas', 'services', 'general'];
+const VALID_BILLING_MODELS = ['retail', 'subscription', 'usage_based', 'rental', 'professional_services', 'healthcare', 'logistics', 'custom'];
+const VALID_MODULES = new Set<string>(ALL_MODULES);
+
+function sanitizeModules(modules: unknown): string[] {
+  return Array.isArray(modules)
+    ? Array.from(new Set(modules.filter((moduleId): moduleId is string => typeof moduleId === 'string' && VALID_MODULES.has(moduleId))))
+    : [];
+}
 
 function serializeOrg(org: any) {
   if (!org) return null;
@@ -81,10 +91,14 @@ export async function createOrganization(req: Request, res: Response, next: Next
     }
 
     const bt: BusinessType = VALID_BUSINESS_TYPES.includes(businessType) ? businessType : 'general';
+    if (billingModel && !VALID_BILLING_MODELS.includes(billingModel)) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Unknown billing model' } });
+      return;
+    }
     const model = billingModel || BUSINESS_TYPE_BILLING_MODEL[bt];
     const modules =
       Array.isArray(enabledModules) && enabledModules.length > 0
-        ? enabledModules
+        ? sanitizeModules(enabledModules)
         : modulesForBusinessType(bt);
 
     const organization = await OrganizationModel.create({
@@ -139,10 +153,10 @@ export async function createOrganization(req: Request, res: Response, next: Next
 
     const memberships = await loadMemberships(userId);
 
+    setSessionCookie(res, token);
     res.status(201).json({
       success: true,
       data: {
-        token,
         user: { _id: user._id, name: user.name, email: user.email, role: 'admin', organizationId: user.organizationId },
         organization: serializeOrg(organization),
         memberships,
@@ -207,10 +221,10 @@ export async function switchOrganization(req: Request, res: Response, next: Next
 
     const memberships = await loadMemberships(userId);
 
+    setSessionCookie(res, token);
     res.json({
       success: true,
       data: {
-        token,
         user: { _id: user._id, name: user.name, email: user.email, role: membership.role, organizationId: user.organizationId },
         organization: serializeOrg(organization),
         memberships,
@@ -236,13 +250,7 @@ export async function updateOrganizationSettings(req: Request, res: Response, ne
     if (businessType && VALID_BUSINESS_TYPES.includes(businessType)) org.businessType = businessType;
     if (Array.isArray(enabledModules)) {
       // Validate modules against a known list (Phase 11 & 12 Requirement)
-      const validModules = [
-        'invoices', 'customers', 'products', 'payments', 'credit-notes', 'recurring',
-        'invoice-templates', 'approvals', 'users', 'audit-logs', 'dynamic', 'ai_copilot',
-        'reports', 'pos', 'inventory', 'suppliers', 'purchases', 'returns', 'shifts', 'expenses',
-        'subscriptions', 'projects'
-      ];
-      const sanitizedModules = enabledModules.filter((m: string) => validModules.includes(m));
+      const sanitizedModules = sanitizeModules(enabledModules);
 
       const addedModules = sanitizedModules.filter((m: string) => !org.enabledModules.includes(m));
       org.enabledModules = sanitizedModules;
@@ -380,13 +388,7 @@ export async function applyCustomArchitecture(req: Request, res: Response, next:
       org.billingModel = architecture.baseBillingModel;
     }
     if (architecture.recommendedModules && Array.isArray(architecture.recommendedModules)) {
-      const validModules = [
-        'invoices', 'customers', 'products', 'payments', 'credit-notes', 'recurring',
-        'invoice-templates', 'approvals', 'users', 'audit-logs', 'dynamic', 'ai_copilot',
-        'reports', 'pos', 'inventory', 'suppliers', 'purchases', 'returns', 'shifts', 'expenses',
-        'subscriptions', 'projects'
-      ];
-      const sanitizedModules = architecture.recommendedModules.filter((m: string) => validModules.includes(m));
+      const sanitizedModules = sanitizeModules(architecture.recommendedModules);
       const addedModules = sanitizedModules.filter((m: string) => !org.enabledModules.includes(m));
       
       org.enabledModules = Array.from(new Set([...org.enabledModules, ...sanitizedModules]));
