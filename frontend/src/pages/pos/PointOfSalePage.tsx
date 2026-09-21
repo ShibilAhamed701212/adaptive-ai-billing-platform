@@ -366,7 +366,7 @@ export const PointOfSalePage: React.FC = () => {
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
             <h1 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <ScanLine size={28} style={{ color: 'var(--primary-color)' }} /> 
+              <ScanLine size={28} style={{ color: 'var(--accent-primary)' }} /> 
               Terminal POS
             </h1>
             {isOffline && (
@@ -418,7 +418,7 @@ export const PointOfSalePage: React.FC = () => {
               <div style={{ fontWeight: 600 }}>{p.name}</div>
               <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{p.sku} | {p.barcode || 'No barcode'}</div>
               <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Stock: {p.stockQuantity || 0}</div>
-              <div style={{ color: 'var(--primary-color)', fontWeight: 600, fontSize: '1.1rem', marginTop: 'auto' }}>
+              <div style={{ color: 'var(--accent-primary)', fontWeight: 600, fontSize: '1.1rem', marginTop: 'auto' }}>
                 ₹{p.unitPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
               </div>
             </div>
@@ -550,7 +550,7 @@ export const PointOfSalePage: React.FC = () => {
             <button 
               onClick={openCheckout}
               disabled={cart.length === 0 || isCheckingOut}
-              style={{ width: '100%', background: 'var(--primary-color)', color: 'white', border: 'none', padding: '0.9rem', borderRadius: '8px', cursor: cart.length > 0 ? 'pointer' : 'not-allowed', opacity: (cart.length > 0 && !isCheckingOut) ? 1 : 0.5, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', fontWeight: 600, fontSize: '1.1rem' }}
+              style={{ width: '100%', background: 'var(--accent-primary)', color: 'white', border: 'none', padding: '0.9rem', borderRadius: '8px', cursor: cart.length > 0 ? 'pointer' : 'not-allowed', opacity: (cart.length > 0 && !isCheckingOut) ? 1 : 0.5, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', fontWeight: 600, fontSize: '1.1rem' }}
             >
               <Check size={20} /> {isCheckingOut ? 'Processing...' : 'Checkout'}
             </button>

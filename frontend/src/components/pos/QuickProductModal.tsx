@@ -75,7 +75,7 @@ export const QuickProductModal: React.FC<QuickProductModalProps> = ({
       <div style={{ background: 'var(--bg-primary)', padding: '2rem', borderRadius: '12px', width: '480px', boxShadow: '0 8px 32px rgba(0,0,0,0.25)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
           <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Plus size={20} style={{ color: 'var(--primary-color)' }} /> Add Unknown Barcode Item
+            <Plus size={20} style={{ color: 'var(--accent-primary)' }} /> Add Unknown Barcode Item
           </h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
             <X size={20} />
@@ -141,7 +141,7 @@ export const QuickProductModal: React.FC<QuickProductModalProps> = ({
             <button type="button" onClick={onClose} style={{ padding: '0.75rem 1.25rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'transparent', cursor: 'pointer' }}>
               Cancel
             </button>
-            <button type="submit" disabled={loading} style={{ padding: '0.75rem 1.5rem', borderRadius: '6px', border: 'none', background: 'var(--primary-color)', color: 'white', fontWeight: 600, cursor: 'pointer' }}>
+            <button type="submit" disabled={loading} style={{ padding: '0.75rem 1.5rem', borderRadius: '6px', border: 'none', background: 'var(--accent-primary)', color: 'white', fontWeight: 600, cursor: 'pointer' }}>
               {loading ? 'Saving...' : 'Add & Insert to Cart'}
             </button>
           </div>

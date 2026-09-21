@@ -113,7 +113,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ isOpen, on
           <button onClick={onClose} style={{ padding: '0.6rem 1.25rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'transparent', cursor: 'pointer' }}>
             Cancel
           </button>
-          <button onClick={handlePrint} style={{ padding: '0.6rem 1.5rem', borderRadius: '6px', border: 'none', background: 'var(--primary-color)', color: '#fff', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+          <button onClick={handlePrint} style={{ padding: '0.6rem 1.5rem', borderRadius: '6px', border: 'none', background: 'var(--accent-primary)', color: '#fff', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
             <Printer size={18} /> Print {copies} Labels
           </button>
         </div>
