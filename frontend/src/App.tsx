@@ -29,6 +29,7 @@ import { HeldBillsPage } from './pages/held-bills/HeldBillsPage';
 import { BackupPage } from './pages/backup/BackupPage';
 import { TeamPage } from './pages/team/TeamPage';
 import { NewOrganizationPage } from './pages/organizations/NewOrganizationPage';
+import { BillingTestPage } from './pages/dev/BillingTestPage';
 import { InvoiceCopilotDraft } from '@billing/shared';
 
 function AccessDenied({ onNavigate, message }: { onNavigate: (p: string) => void; message: string }) {
@@ -115,6 +116,13 @@ function RouterShell() {
     if (currentPath === '/expenses') return <ExpensesPage />;
     if (currentPath === '/inventory') return <InventoryPage />;
     if (currentPath === '/held-bills') return <HeldBillsPage onNavigate={navigate} />;
+    
+    if (currentPath === '/dev/billing-test') {
+      if (user.role !== 'admin') {
+        return <AccessDenied onNavigate={navigate} message="Only administrators can run system tests." />;
+      }
+      return <BillingTestPage />;
+    }
 
     if (currentPath === '/team') {
       if (user.role !== 'admin' && user.role !== 'manager') {

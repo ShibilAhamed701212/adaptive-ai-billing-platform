@@ -223,3 +223,63 @@ export async function refundPayment(req: Request, res: Response, next: NextFunct
     next(err);
   }
 }
+
+export async function testCheckout(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const orgId = req.tenant!.organizationId;
+    const { invoiceId, amount } = req.body;
+
+    const invoice = await InvoiceModel.findOne({
+      _id: invoiceId,
+      organizationId: new mongoose.Types.ObjectId(orgId),
+    });
+
+    if (!invoice) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Invoice not found in test checkout' } });
+      return;
+    }
+
+    const paymentAmount = Number(amount) || invoice.amountDue;
+
+    const payment = await PaymentModel.create({
+      organizationId: new mongoose.Types.ObjectId(orgId),
+      invoiceId: invoice._id,
+      customerId: invoice.customerId,
+      amount: paymentAmount,
+      currency: invoice.currency,
+      paymentDate: new Date().toISOString().split('T')[0],
+      paymentMethod: 'test_sandbox',
+      transactionReference: 'TEST-' + Math.random().toString(36).substring(7),
+      status: 'completed',
+      notes: 'Sandbox Test Payment',
+    });
+
+    const updatedPaid = Math.round((invoice.amountPaid + paymentAmount) * 100) / 100;
+    const updatedDue = Math.max(0, Math.round((invoice.grandTotal - updatedPaid) * 100) / 100);
+    const newStatus = updatedDue === 0 ? 'paid' : 'partially_paid';
+
+    invoice.amountPaid = updatedPaid;
+    invoice.amountDue = updatedDue;
+    invoice.status = newStatus;
+    if (!invoice.paymentHistory) invoice.paymentHistory = [];
+    invoice.paymentHistory.push({
+      paymentId: String(payment._id),
+      amount: paymentAmount,
+      paymentDate: payment.paymentDate,
+      method: payment.paymentMethod,
+      reference: payment.transactionReference,
+    });
+    await invoice.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Sandbox payment processed successfully',
+      data: {
+        payment,
+        invoiceStatus: newStatus
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+}

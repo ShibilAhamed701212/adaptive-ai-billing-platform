@@ -51,6 +51,13 @@ const OrganizationSchema = new Schema<IOrganizationDoc>(
       completedSteps: { type: [String], default: [] },
       skipped: { type: Boolean, default: false },
     },
+    moduleAudit: [
+      {
+        moduleId: { type: String, required: true },
+        enabledBy: { type: String, enum: ['system', 'admin', 'ai'], required: true },
+        timestamp: { type: Date, default: Date.now }
+      }
+    ]
   },
   { timestamps: true }
 );

@@ -48,6 +48,11 @@ export interface Organization {
     completedSteps?: string[];
     skipped?: boolean;
   };
+  moduleAudit?: {
+    moduleId: string;
+    enabledBy: 'system' | 'admin' | 'ai';
+    timestamp: string;
+  }[];
   createdAt: string;
   updatedAt: string;
 }

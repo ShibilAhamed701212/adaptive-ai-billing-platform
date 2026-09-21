@@ -4,22 +4,36 @@ export type BusinessType = 'retail' | 'saas' | 'services' | 'general';
 
 /**
  * Canonical module keys stored on Organization.enabledModules.
- * A module key present in the array means the organization may use that module.
  */
 export const ALL_MODULES = [
   'invoices',
-  'customers',
+  'customers', // Generalized (Clients for Agency)
   'products',
   'payments',
   'reports',
   'ai_copilot',
-  'subscriptions',
+  
+  // Retail specific
   'pos',
   'inventory',
   'purchases',
   'suppliers',
   'returns',
   'shifts',
+  
+  // SaaS specific
+  'plans',
+  'subscriptions',
+  'usage',
+  'churn',
+
+  // Agency specific
+  'projects',
+  'services',
+  'timesheets',
+  'retainers',
+
+  // General specific (can be shared)
   'expenses',
   'credit_notes',
   'approvals',
@@ -32,42 +46,52 @@ export const MODULE_PRESETS: Record<BusinessType, string[]> = {
   retail: [
     'pos',
     'inventory',
-    'purchases',
-    'suppliers',
-    'returns',
-    'shifts',
-    'expenses',
-    'customers',
     'products',
+    'customers',
+    'sales',
     'invoices',
     'payments',
+    'suppliers',
     'reports',
-    'ai_copilot',
+    'settings',
+    'ai_copilot'
   ],
   saas: [
+    'plans',
     'subscriptions',
     'customers',
-    'products',
     'invoices',
     'payments',
+    'usage',
+    'revenue',
+    'churn',
     'reports',
-    'ai_copilot',
+    'settings',
+    'ai_copilot'
   ],
-  services: [
-    'customers',
-    'products',
+  services: [ // Agency
+    'customers', // Used as Clients
+    'projects',
+    'services',
+    'timesheets',
+    'expenses',
     'invoices',
     'payments',
+    'retainers',
     'reports',
-    'ai_copilot',
+    'settings',
+    'ai_copilot'
   ],
   general: [
-    'invoices',
-    'customers',
     'products',
+    'customers',
+    'sales',
+    'invoices',
     'payments',
+    'expenses',
     'reports',
-    'ai_copilot',
+    'settings',
+    'ai_copilot'
   ],
 };
 

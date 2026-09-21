@@ -244,7 +244,20 @@ export async function updateOrganizationSettings(req: Request, res: Response, ne
 
     if (name) org.name = String(name).trim();
     if (businessType && VALID_BUSINESS_TYPES.includes(businessType)) org.businessType = businessType;
-    if (Array.isArray(enabledModules)) org.enabledModules = enabledModules;
+    if (Array.isArray(enabledModules)) {
+      const addedModules = enabledModules.filter(m => !org.enabledModules.includes(m));
+      org.enabledModules = enabledModules;
+      if (addedModules.length > 0) {
+        if (!org.moduleAudit) org.moduleAudit = [];
+        addedModules.forEach(moduleId => {
+          org.moduleAudit.push({
+            moduleId,
+            enabledBy: req.body._enabledByAi ? 'ai' : 'admin',
+            timestamp: new Date()
+          });
+        });
+      }
+    }
     if (isOnboarded !== undefined) org.isOnboarded = Boolean(isOnboarded);
     if (onboarding && typeof onboarding === 'object') {
       (org as any).onboarding = {
