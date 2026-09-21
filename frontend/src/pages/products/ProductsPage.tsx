@@ -17,11 +17,13 @@ export const ProductsPage: React.FC = () => {
   const [name, setName] = useState<string>('');
   const [sku, setSku] = useState<string>('');
   const [description, setDescription] = useState<string>('');
-  const [type, setType] = useState<'goods' | 'service' | 'subscription' | 'usage'>('service');
-  const [unit, setUnit] = useState<string>('month');
+  const [type, setType] = useState<'goods' | 'service' | 'subscription' | 'usage'>('goods');
+  const [unit, setUnit] = useState<string>('unit');
   const [unitPrice, setUnitPrice] = useState<number>(0);
   const [taxRate, setTaxRate] = useState<number>(0.18);
   const [hsnSacCode, setHsnSacCode] = useState<string>('998313');
+  const [stockQuantity, setStockQuantity] = useState<number>(0);
+  const [expiryDate, setExpiryDate] = useState<string>('');
   const [customFields, setCustomFields] = useState<Record<string, any>>({});
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +63,8 @@ export const ProductsPage: React.FC = () => {
           unitPrice: Number(unitPrice),
           taxRate: Number(taxRate),
           hsnSacCode,
+          stockQuantity: type === 'goods' ? Number(stockQuantity) : 0,
+          expiryDate: type === 'goods' && expiryDate ? expiryDate : undefined,
           customFields,
         }),
       });
@@ -71,6 +75,8 @@ export const ProductsPage: React.FC = () => {
         setSku('');
         setDescription('');
         setUnitPrice(0);
+        setStockQuantity(0);
+        setExpiryDate('');
         setCustomFields({});
         fetchProducts();
       } else {
@@ -127,6 +133,7 @@ export const ProductsPage: React.FC = () => {
                 <th>SKU Identifier</th>
                 <th>Category</th>
                 <th>Unit Type</th>
+                <th>Stock / Qty</th>
                 <th>Base Unit Price (₹)</th>
                 <th>Default Tax Slab</th>
                 <th>HSN / SAC</th>
@@ -136,13 +143,13 @@ export const ProductsPage: React.FC = () => {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8} style={{ textAlign: 'center', padding: '3.5rem', color: 'var(--text-muted)' }}>
+                  <td colSpan={9} style={{ textAlign: 'center', padding: '3.5rem', color: 'var(--text-muted)' }}>
                     Loading catalog items...
                   </td>
                 </tr>
               ) : products.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ textAlign: 'center', padding: '3.5rem', color: 'var(--text-muted)' }}>
+                  <td colSpan={9} style={{ textAlign: 'center', padding: '3.5rem', color: 'var(--text-muted)' }}>
                     No catalog items found. Click "Add New Product/Service" to create one.
                   </td>
                 </tr>
@@ -162,6 +169,16 @@ export const ProductsPage: React.FC = () => {
                       </span>
                     </td>
                     <td>{p.unit}</td>
+                    <td style={{ fontSize: '0.85rem' }}>
+                      {p.type === 'goods' ? (
+                        <>
+                          <div style={{ fontWeight: 600 }}>{p.stockQuantity || 0}</div>
+                          {p.expiryDate && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Exp: {p.expiryDate}</div>}
+                        </>
+                      ) : (
+                        <span style={{ color: 'var(--text-muted)' }}>-</span>
+                      )}
+                    </td>
                     <td style={{ fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
                       ₹{p.unitPrice.toLocaleString()}
                     </td>
@@ -341,6 +358,33 @@ export const ProductsPage: React.FC = () => {
                   <span className="element-desc">Tax accounting code</span>
                 </div>
               </div>
+
+              {type === 'goods' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div className="form-group">
+                    <label className="form-label">Opening Stock Quantity</label>
+                    <input
+                      type="number"
+                      className="form-input"
+                      value={stockQuantity}
+                      onChange={(e) => setStockQuantity(Number(e.target.value) || 0)}
+                      placeholder="0"
+                    />
+                    <span className="element-desc">Current inventory level</span>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Expiration Date (Optional)</label>
+                    <input
+                      type="date"
+                      className="form-input"
+                      value={expiryDate}
+                      onChange={(e) => setExpiryDate(e.target.value)}
+                    />
+                    <span className="element-desc">Valid until date</span>
+                  </div>
+                </div>
+              )}
 
               {/* Dynamic Metadata Attributes */}
               <div style={{ marginTop: '0.5rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)' }}>
