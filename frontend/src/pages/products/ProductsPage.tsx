@@ -300,9 +300,9 @@ export const ProductsPage: React.FC = () => {
                 <div className="form-group">
                   <label className="form-label">Type</label>
                   <select className="form-select" value={type} onChange={(e) => setType(e.target.value as any)}>
+                    <option value="goods">Goods / Product</option>
                     <option value="service">Service</option>
                     <option value="subscription">Subscription</option>
-                    <option value="goods">Goods</option>
                     <option value="usage">Usage / Metered</option>
                   </select>
                   <span className="element-desc">Item billing model</span>
@@ -315,7 +315,7 @@ export const ProductsPage: React.FC = () => {
                     className="form-input"
                     value={unit}
                     onChange={(e) => setUnit(e.target.value)}
-                    placeholder="month, hrs, unit"
+                    placeholder={type === 'goods' ? 'box, kg, pc, unit' : 'month, hr, session'}
                   />
                   <span className="element-desc">Pricing unit</span>
                 </div>
