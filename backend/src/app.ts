@@ -29,6 +29,8 @@ import returnRoutes from './modules/returns/return.routes';
 import shiftRoutes from './modules/shifts/shift.routes';
 import expenseRoutes from './modules/expenses/expense.routes';
 import systemRoutes from './modules/system/system.routes';
+import saasRoutes from './modules/saas/saas.routes';
+import agencyRoutes from './modules/agency/agency.routes';
 
 export function createApp(): Express {
   const app = express();
@@ -116,6 +118,8 @@ export function createApp(): Express {
   app.use('/api/v1/shifts', shiftRoutes);
   app.use('/api/v1/expenses', expenseRoutes);
   app.use('/api/v1/system', systemRoutes);
+  app.use('/api/v1/saas', saasRoutes);
+  app.use('/api/v1/agency', agencyRoutes);
 
   // SPA Client-Side Routing Fallback
   if (hasFrontendDist) {

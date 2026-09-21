@@ -34,6 +34,17 @@ export interface DashboardSummary {
     pendingInvoicesCount: number;
     activeCustomersCount: number;
   };
+  saasKpis?: {
+    mrr: number;
+    arr: number;
+    activeSubscriptions: number;
+    churnRatePercent: number;
+  };
+  agencyKpis?: {
+    activeProjects: number;
+    unbilledHours: number;
+    activeRetainers: number;
+  };
   cashflowProjection: {
     dates: string[];
     projectedInflow: number[];

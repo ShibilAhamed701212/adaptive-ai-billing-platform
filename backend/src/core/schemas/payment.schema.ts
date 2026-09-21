@@ -6,6 +6,9 @@ export const recordPaymentSchema = z.object({
   paymentMethod: z.enum(['bank_transfer', 'credit_card', 'debit_card', 'upi', 'cash', 'stripe', 'razorpay', 'cheque', 'other']).optional().default('bank_transfer'),
   paymentDate: z.string().optional(),
   transactionReference: z.string().max(200).optional(),
+  // Client-supplied dedup key so retried requests never create duplicate financial
+  // records (enforced by the unique partial index on {organizationId, idempotencyKey}).
+  idempotencyKey: z.string().min(8).max(100).optional(),
   notes: z.string().max(2000).optional(),
   customFields: z.record(z.any()).optional().default({}),
 });

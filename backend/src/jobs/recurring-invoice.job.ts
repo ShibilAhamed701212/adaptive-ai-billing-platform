@@ -3,6 +3,7 @@ import { InvoiceModel } from '../models/Invoice.model';
 import { CustomerModel } from '../models/Customer.model';
 import { OrganizationModel } from '../models/Organization.model';
 import { calculateInvoice } from '../billing-engine/calculators/invoice-calculator';
+import { reserveInvoiceNumber } from '../billing-engine/next-invoice-number';
 
 export function calculateNextRunDate(currentDate: Date, frequency: string): Date {
   const next = new Date(currentDate);
@@ -50,11 +51,9 @@ export async function executeRecurringProfileGeneration(profile: IRecurringProfi
     invoiceDiscountAmount: profile.invoiceDiscountAmount,
   });
 
-  // Unique sequential number
-  const prefix = org.settings.invoicePrefix || 'INV';
-  const nextSeq = org.settings.nextInvoiceNumber || 1001;
-  const invoiceNumber = `${prefix}-${new Date().getFullYear()}-${nextSeq}`;
-  await OrganizationModel.findByIdAndUpdate(org._id, { $inc: { 'settings.nextInvoiceNumber': 1 } });
+  // Atomic unique sequential number (BUG-04 regression guard: batch runs racing other
+  // generators could mint duplicate invoice numbers).
+  const { invoiceNumber } = await reserveInvoiceNumber(String(org._id));
 
   const issueDate = new Date().toISOString().split('T')[0];
   const dueDate = new Date(Date.now() + (org.settings.paymentTermsDays || 30) * 86400000).toISOString().split('T')[0];

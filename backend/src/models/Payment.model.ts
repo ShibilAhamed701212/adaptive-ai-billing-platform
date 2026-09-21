@@ -6,6 +6,7 @@ export interface IPaymentDoc extends Document, Omit<IPaymentData, '_id' | 'organ
   organizationId: mongoose.Types.ObjectId;
   invoiceId: mongoose.Types.ObjectId;
   customerId: mongoose.Types.ObjectId;
+  refundedAmount: number;
 }
 
 const PaymentSchema = new Schema<IPaymentDoc>(
@@ -18,7 +19,7 @@ const PaymentSchema = new Schema<IPaymentDoc>(
     paymentDate: { type: String, required: true },
     paymentMethod: {
       type: String,
-      enum: ['bank_transfer', 'credit_card', 'debit_card', 'upi', 'cash', 'card', 'store_credit', 'loyalty_points', 'stripe', 'razorpay', 'cheque', 'other'],
+      enum: ['bank_transfer', 'credit_card', 'debit_card', 'upi', 'cash', 'card', 'store_credit', 'loyalty_points', 'stripe', 'razorpay', 'cheque', 'sandbox', 'test_sandbox', 'other'],
       default: 'cash',
     },
     transactionReference: String,
@@ -27,6 +28,9 @@ const PaymentSchema = new Schema<IPaymentDoc>(
       enum: ['completed', 'pending', 'failed', 'refunded'],
       default: 'completed',
     },
+    // Cumulative amount refunded against this payment (partial refunds), so repeated
+    // partial refunds can never exceed the original payment amount.
+    refundedAmount: { type: Number, default: 0, min: 0 },
     notes: String,
     idempotencyKey: { type: String, sparse: true },
     customFields: { type: Schema.Types.Mixed, default: {} },

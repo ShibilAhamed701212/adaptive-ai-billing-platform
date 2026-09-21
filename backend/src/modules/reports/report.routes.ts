@@ -8,6 +8,8 @@ import {
   getProfitReport,
   getBestSellersReport,
   getGSTSummaryReport,
+  getSaasSummary,
+  getAgencySummary
 } from './report.controller';
 import { tenantMiddleware, requireRole } from '../../core/tenancy/tenant.middleware';
 
@@ -23,5 +25,7 @@ router.get('/top-customers', getTopCustomersReport);
 router.get('/profit', requireRole(['admin', 'manager', 'accountant']), getProfitReport);
 router.get('/best-sellers', getBestSellersReport);
 router.get('/gst-summary', requireRole(['admin', 'manager', 'accountant']), getGSTSummaryReport);
+router.get('/saas', getSaasSummary);
+router.get('/agency', getAgencySummary);
 
 export default router;

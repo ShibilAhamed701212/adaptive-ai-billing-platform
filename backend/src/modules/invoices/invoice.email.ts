@@ -26,18 +26,18 @@ export async function sendInvoiceEmail(invoice: any, org: any, toEmail: string) 
     doc.on('end', () => resolve(Buffer.concat(buffers)));
     doc.on('error', reject);
 
-    doc.fontSize(20).text(org.name || 'Adaptive Billing Platform', { align: 'left' });
+    doc.fontSize(20).text(org?.name || 'Adaptive Billing Platform', { align: 'left' });
     doc.moveDown();
     doc.fontSize(12).text(`Invoice Number: ${invoice.invoiceNumber}`);
-    doc.text(`Total Due: ${invoice.totals.grandTotal}`);
+    doc.text(`Total Due: ${invoice.grandTotal ?? 0}`);
     doc.end();
   });
 
   const mailOptions = {
-    from: `"${org.name}" <${user}>`,
+    from: `"${org?.name || 'Billing'}" <${user}>`,
     to: toEmail,
-    subject: `Invoice #${invoice.invoiceNumber} from ${org.name}`,
-    text: `Dear ${invoice.customer.name},\n\nPlease find attached your invoice #${invoice.invoiceNumber} for the amount of ${invoice.totals.grandTotal}.\n\nThank you for your business!`,
+    subject: `Invoice #${invoice.invoiceNumber} from ${org?.name || 'Billing'}`,
+    text: `Dear ${invoice.customerSnapshot?.name || 'Customer'},\n\nPlease find attached your invoice #${invoice.invoiceNumber} for the amount of ${invoice.grandTotal ?? 0}.\n\nThank you for your business!`,
     attachments: [
       {
         filename: `invoice-${invoice.invoiceNumber}.pdf`,

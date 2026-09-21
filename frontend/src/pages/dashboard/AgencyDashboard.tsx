@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { apiRequest } from '../../api/client';
 import { Briefcase, Clock4, Banknote, ShieldCheck } from 'lucide-react';
 
 interface AgencyDashboardProps {
@@ -8,6 +9,13 @@ interface AgencyDashboardProps {
 
 export const AgencyDashboard: React.FC<AgencyDashboardProps> = ({ onNavigate }) => {
   const { organization, user } = useAuth();
+  const [data, setData] = useState<any>(null);
+  
+  useEffect(() => {
+    apiRequest('/reports/agency').then(res => {
+      if(res.success) setData(res.data);
+    }).catch(console.error);
+  }, []);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -24,7 +32,7 @@ export const AgencyDashboard: React.FC<AgencyDashboardProps> = ({ onNavigate }) 
             <span className="kpi-title">Active Projects</span>
             <Briefcase size={18} color="var(--accent-primary)" />
           </div>
-          <div className="kpi-value">8</div>
+          <div className="kpi-value">{data?.activeProjects || 0}</div>
           <p className="kpi-desc">Ongoing client engagements</p>
         </div>
 
@@ -33,7 +41,7 @@ export const AgencyDashboard: React.FC<AgencyDashboardProps> = ({ onNavigate }) 
             <span className="kpi-title">Unbilled Hours</span>
             <Clock4 size={18} color="var(--color-warning)" />
           </div>
-          <div className="kpi-value" style={{ color: 'var(--color-warning)' }}>42.5 hrs</div>
+          <div className="kpi-value" style={{ color: 'var(--color-warning)' }}>{data?.unbilledHours || 0} hrs</div>
           <p className="kpi-desc">Timesheets pending invoicing</p>
         </div>
 
@@ -42,7 +50,7 @@ export const AgencyDashboard: React.FC<AgencyDashboardProps> = ({ onNavigate }) 
             <span className="kpi-title">Outstanding Invoices</span>
             <Banknote size={18} color="var(--color-danger)" />
           </div>
-          <div className="kpi-value">€12,500</div>
+          <div className="kpi-value">{organization?.settings?.currencySymbol || '€'}{(data?.outstandingInvoices || 0).toLocaleString()}</div>
           <p className="kpi-desc">Awaiting client payment</p>
         </div>
 
@@ -51,39 +59,8 @@ export const AgencyDashboard: React.FC<AgencyDashboardProps> = ({ onNavigate }) 
             <span className="kpi-title">Active Retainers</span>
             <ShieldCheck size={18} color="var(--color-success)" />
           </div>
-          <div className="kpi-value">2</div>
-          <p className="kpi-desc">Clients on monthly retainer</p>
-        </div>
-      </div>
-
-      <div className="glass-panel" style={{ padding: '1.5rem' }}>
-        <h3 style={{ margin: '0 0 1rem' }}>Active Projects Status</h3>
-        <p className="section-lead">Current utilization vs budget</p>
-        <div className="data-table-container">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Project Name</th>
-                <th>Client</th>
-                <th>Hourly Rate</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Website Redesign 1</td>
-                <td>Client Brand 1</td>
-                <td>€150 / hr</td>
-                <td><span className="badge badge-paid">Active</span></td>
-              </tr>
-              <tr>
-                <td>Website Redesign 2</td>
-                <td>Client Brand 2</td>
-                <td>€150 / hr</td>
-                <td><span className="badge badge-paid">Active</span></td>
-              </tr>
-            </tbody>
-          </table>
+          <div className="kpi-value">{data?.activeRetainers || 0}</div>
+          <p className="kpi-desc">Clients on active retainer</p>
         </div>
       </div>
     </div>

@@ -12,6 +12,7 @@
     "test:pos": "ts-node src/tests/pos.e2e.test.ts",
     "test:integration": "ts-node src/tests/pos.integration.test.ts",
     "test:saas": "ts-node src/tests/saas-flow.test.ts",
+    "test:audit": "ts-node src/tests/logic-audit.test.ts",
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {
@@ -42,8 +43,10 @@
     "@types/node-cron": "^3.0.11",
     "@types/nodemailer": "^8.0.1",
     "@types/pdfkit": "^0.17.6",
+    "@types/supertest": "^7.2.1",
     "@types/uuid": "^10.0.0",
     "mongodb-memory-server": "^11.2.0",
+    "supertest": "^7.2.2",
     "ts-node": "^10.9.2",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2"

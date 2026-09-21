@@ -11,6 +11,38 @@ import { logAuditEvent } from '../../core/audit/audit.service';
 import mongoose from 'mongoose';
 import { generateInvoicePdf } from './invoice.pdf';
 import { sendInvoiceEmail } from './invoice.email';
+import { reserveInvoiceNumber } from '../../billing-engine/next-invoice-number';
+
+const VALID_INVOICE_STATUSES = ['draft', 'pending_approval', 'approved', 'sent', 'partially_paid', 'paid', 'overdue', 'void', 'cancelled'] as const;
+
+/**
+ * Reconciles the customer's outstanding balance for a status transition.
+ * outstanding balance counts only invoices that are (or were) counted as receivables:
+ * 'sent'/'approved' (and later partially_paid/overdue derive from them).
+ */
+function countsAsReceivable(status: string): boolean {
+  return status === 'sent' || status === 'approved' || status === 'partially_paid' || status === 'overdue';
+}
+
+function statusDelta(previous: string, next: string, amountDue: number): number {
+  const was = countsAsReceivable(previous);
+  const will = countsAsReceivable(next);
+  if (was === will) return 0;
+  return will ? amountDue : -amountDue;
+}
+
+/** Legal invoice status transitions ('paid' is only reached via payment records). */
+const ALLOWED_STATUS_TRANSITIONS: Record<string, string[]> = {
+  draft: ['pending_approval', 'approved', 'sent', 'void', 'cancelled'],
+  pending_approval: ['approved', 'draft', 'cancelled'],
+  approved: ['sent', 'void', 'cancelled'],
+  sent: ['partially_paid', 'overdue', 'void', 'cancelled'],
+  partially_paid: ['overdue'],
+  overdue: ['partially_paid'],
+  paid: [],
+  void: [],
+  cancelled: [],
+};
 
 export async function listInvoices(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -142,6 +174,16 @@ export async function createInvoice(req: Request, res: Response, next: NextFunct
       status = 'draft',
     } = req.body;
 
+    // SECURITY (BUG-05): the client may only choose 'draft' or 'sent'. Any other value
+    // (e.g. 'paid', 'approved') would mint a receivable/PAID invoice with zero payments.
+    if (status !== 'draft' && status !== 'sent') {
+      res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_STATUS', message: "status must be 'draft' or 'sent'" },
+      });
+      return;
+    }
+
     if (!customerId || !items || !Array.isArray(items) || items.length === 0) {
       res.status(400).json({
         success: false,
@@ -192,13 +234,8 @@ export async function createInvoice(req: Request, res: Response, next: NextFunct
       invoiceDiscountAmount: Number(invoiceDiscountAmount) || 0,
     });
 
-    // Generate unique sequential invoice number
-    const prefix = org.settings.invoicePrefix || 'INV';
-    const nextSeq = org.settings.nextInvoiceNumber || 1001;
-    const invoiceNumber = `${prefix}-${new Date().getFullYear()}-${nextSeq}`;
-
-    // Increment counter atomically on org
-    await OrganizationModel.findByIdAndUpdate(orgId, { $inc: { 'settings.nextInvoiceNumber': 1 } });
+    // Generate unique sequential invoice number atomically (BUG-04 regression guard)
+    const { invoiceNumber } = await reserveInvoiceNumber(orgId);
 
     // Determine initial status
     let initialStatus = status;
@@ -293,18 +330,54 @@ export async function updateInvoiceStatus(req: Request, res: Response, next: Nex
       return;
     }
 
+    // STATE MACHINE (BUG-03): enforce legal transitions and keep the customer ledger in
+    // sync for every transition that changes receivable counting.
     const previousStatus = invoice.status;
+    if (previousStatus === status) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_TRANSITION', message: `Invoice is already '${status}'` },
+      });
+      return;
+    }
+    if (!ALLOWED_STATUS_TRANSITIONS[previousStatus]?.includes(status)) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_TRANSITION',
+          message: `Cannot change invoice status from '${previousStatus}' to '${status}'`,
+        },
+      });
+      return;
+    }
+
+    // Never let a status move silently rewrite payment state: any transition that lands
+    // on or leaves 'paid' is only allowed when payment records back it (enforced below).
+    if (status === 'paid') {
+      res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_TRANSITION', message: 'Paid status is set automatically by payment records, not manually' },
+      });
+      return;
+    }
+
+    // Guard against voiding/cancelling invoices that have recorded payments.
+    if ((status === 'void' || status === 'cancelled') && invoice.amountPaid > 0) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'CANNOT_VOID_PAID', message: 'Invoice has recorded payments; refund or issue a credit note first.' },
+      });
+      return;
+    }
+
     invoice.status = status;
     await invoice.save();
 
-    // Reconcile customer outstanding balance on state transition
-    if (previousStatus === 'draft' && (status === 'sent' || status === 'approved')) {
+    // Reconcile customer outstanding balance on any receivable-affecting transition.
+    const delta = statusDelta(previousStatus, status, invoice.amountDue);
+    if (delta !== 0) {
       await CustomerModel.findByIdAndUpdate(invoice.customerId, {
-        $inc: { outstandingBalance: invoice.amountDue },
-      });
-    } else if ((previousStatus === 'sent' || previousStatus === 'approved') && (status === 'void' || status === 'cancelled')) {
-      await CustomerModel.findByIdAndUpdate(invoice.customerId, {
-        $inc: { outstandingBalance: -invoice.amountDue },
+        $inc: { outstandingBalance: delta },
       });
     }
 
@@ -422,10 +495,11 @@ export async function deleteInvoice(req: Request, res: Response, next: NextFunct
     invoice.status = 'cancelled';
     await invoice.save();
 
-    // Deduct balance from customer if was previously counted in receivables
-    if (previousStatus === 'sent' || previousStatus === 'approved') {
+    // Deduct balance from customer for any receivable-counted status (BUG-03 pattern).
+    const delta = statusDelta(previousStatus, 'cancelled', invoice.amountDue);
+    if (delta !== 0) {
       await CustomerModel.findByIdAndUpdate(invoice.customerId, {
-        $inc: { outstandingBalance: -invoice.amountDue },
+        $inc: { outstandingBalance: delta },
       });
     }
 
@@ -481,10 +555,19 @@ export async function sendEmail(req: Request, res: Response, next: NextFunction)
     }
 
     await sendInvoiceEmail(invoice, org, toEmail);
-    
-    // Update status to sent if it was just approved (or draft)
+
+    // Update status to sent if it was just approved (or draft) — and keep the customer
+    // ledger in sync (BUG-06): draft→sent makes the invoice a receivable, so the
+    // outstanding balance must increase exactly like the create/status endpoints do.
     if (invoice.status === 'draft' || invoice.status === 'approved') {
+      const previousStatus = invoice.status;
       await InvoiceModel.updateOne({ _id: invoice._id }, { status: 'sent' });
+      const delta = statusDelta(previousStatus, 'sent', invoice.amountDue || 0);
+      if (delta !== 0 && invoice.customerId) {
+        await CustomerModel.findByIdAndUpdate(invoice.customerId, {
+          $inc: { outstandingBalance: delta },
+        });
+      }
     }
 
     res.json({ success: true, message: `Email sent to ${toEmail}` });

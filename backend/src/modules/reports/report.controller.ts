@@ -124,10 +124,65 @@ export async function getDashboardSummary(req: Request, res: Response, next: Nex
       },
     };
 
-    res.json({ success: true, data: summary });
+    // Retail-specific KPIs for the retail dashboard (BUG-14 contract fix): the frontend
+    // reads grossSales/netProfit/grossMarginPercent/totalRefunds/transactionCount at the
+    // top level, so they are merged into the response from the same DB-derived
+    // aggregation as the P&L report — never hard-coded.
+    const retail = await buildRetailKpis(String(orgId));
+    const dataWithRetail = { ...summary, ...retail };
+
+    res.json({ success: true, data: dataWithRetail });
   } catch (err) {
     next(err);
   }
+}
+
+/** DB-derived retail KPI block, shared by the dashboard summary endpoint. */
+async function buildRetailKpis(orgId: string) {
+  const { InvoiceModel } = await import('../../models/Invoice.model');
+  const { ReturnModel } = await import('../../models/Return.model');
+  const { ProductModel } = await import('../../models/Product.model');
+  const { ExpenseModel } = await import('../../models/Expense.model');
+  const orgObjId = new mongoose.Types.ObjectId(orgId);
+
+  const [invoices, returns, expenses, products] = await Promise.all([
+    InvoiceModel.find({ organizationId: orgObjId, status: { $nin: ['draft', 'cancelled', 'void'] } }).lean(),
+    ReturnModel.find({ organizationId: orgObjId }).lean(),
+    ExpenseModel.find({ organizationId: orgObjId }).lean(),
+    ProductModel.find({ organizationId: orgObjId }).lean(),
+  ]);
+
+  const productCostMap = new Map<string, number>();
+  products.forEach((p) => productCostMap.set(String(p._id), p.costPrice || 0));
+
+  let grossSales = 0;
+  let totalDiscounts = 0;
+  let totalCOGS = 0;
+  for (const inv of invoices) {
+    grossSales += inv.subtotal || 0;
+    totalDiscounts += inv.discountTotal || 0;
+    if (inv.items) {
+      for (const item of inv.items) {
+        const cost = (item.productId ? productCostMap.get(String(item.productId)) : 0) || 0;
+        totalCOGS += (item.quantity || 0) * cost;
+      }
+    }
+  }
+
+  const totalRefunds = returns.reduce((sum, r) => sum + (r.totalRefundAmount || 0), 0);
+  const totalOperatingExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+  const netSales = grossSales - totalDiscounts - totalRefunds;
+  const grossProfit = netSales - totalCOGS;
+  const netProfit = grossProfit - totalOperatingExpenses;
+  const grossMarginPercent = netSales > 0 ? Math.round((grossProfit / netSales) * 10000) / 100 : 0;
+
+  return {
+    grossSales: Math.round(grossSales * 100) / 100,
+    netProfit: Math.round(netProfit * 100) / 100,
+    grossMarginPercent,
+    totalRefunds: Math.round(totalRefunds * 100) / 100,
+    transactionCount: invoices.length,
+  };
 }
 
 export async function getRevenueReport(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -517,6 +572,83 @@ export async function getGSTSummaryReport(req: Request, res: Response, next: Nex
         rateBreakdown: Array.from(rateBreakdownMap.values()),
         hsnSummary: Array.from(hsnSummaryMap.values()),
       },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getSaasSummary(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const orgId = req.tenant!.organizationId;
+    const { SubscriptionModel } = await import('../../models/Subscription.model');
+    const { PlanModel } = await import('../../models/Plan.model');
+
+    const subs = await SubscriptionModel.find({ organizationId: new mongoose.Types.ObjectId(orgId) }).populate('planId').lean();
+    
+    let mrr = 0;
+    let activeSubs = 0;
+    let trialingSubs = 0;
+    let churnedSubs = 0;
+
+    for (const sub of subs) {
+      if (sub.status === 'active') {
+        activeSubs++;
+        const plan = sub.planId as any;
+        if (plan && plan.price) {
+          mrr += plan.billingInterval === 'yearly' ? plan.price / 12 : plan.price;
+        }
+      } else if (sub.status === 'trialing') {
+        trialingSubs++;
+      } else if (sub.status === 'canceled') {
+        churnedSubs++;
+      }
+    }
+
+    const totalSubs = activeSubs + churnedSubs;
+    const churnRate = totalSubs > 0 ? (churnedSubs / totalSubs) * 100 : 0;
+
+    res.json({
+      success: true,
+      data: {
+        mrr: Math.round(mrr),
+        arr: Math.round(mrr * 12),
+        activeSubscriptions: activeSubs,
+        trialSubscriptions: trialingSubs,
+        churnRatePercent: Math.round(churnRate * 10) / 10
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getAgencySummary(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const orgId = req.tenant!.organizationId;
+    const { ProjectModel } = await import('../../models/Project.model');
+    const { TimesheetModel } = await import('../../models/Timesheet.model');
+    const { RetainerModel } = await import('../../models/Retainer.model');
+    const { InvoiceModel } = await import('../../models/Invoice.model');
+
+    const [projects, timesheets, retainers, invoices] = await Promise.all([
+      ProjectModel.find({ organizationId: new mongoose.Types.ObjectId(orgId), status: 'active' }).lean(),
+      TimesheetModel.find({ organizationId: new mongoose.Types.ObjectId(orgId), status: 'draft', isBillable: true }).lean(),
+      RetainerModel.find({ organizationId: new mongoose.Types.ObjectId(orgId), status: 'active' }).lean(),
+      InvoiceModel.find({ organizationId: new mongoose.Types.ObjectId(orgId), status: { $in: ['sent', 'partially_paid', 'overdue'] } }).lean()
+    ]);
+
+    const unbilledHours = timesheets.reduce((acc, t) => acc + (t.hours || 0), 0);
+    const outstandingInvoices = invoices.reduce((acc, i) => acc + (i.amountDue || 0), 0);
+
+    res.json({
+      success: true,
+      data: {
+        activeProjects: projects.length,
+        unbilledHours: Math.round(unbilledHours * 10) / 10,
+        activeRetainers: retainers.length,
+        outstandingInvoices
+      }
     });
   } catch (err) {
     next(err);

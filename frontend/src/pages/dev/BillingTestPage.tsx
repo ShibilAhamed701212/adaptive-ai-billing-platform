@@ -12,25 +12,35 @@ export const BillingTestPage: React.FC = () => {
     setLoading(true);
     setResults([]);
 
-    const runScenario = async (name: string, endpoint: string, body?: any) => {
+    const runScenario = async (name: string, assertionFunc: () => Promise<{ expected: any, actual: any, status: boolean, msg?: string }>) => {
       try {
-        const res = await apiRequest(endpoint, {
-          method: body ? 'POST' : 'GET',
-          body: body ? JSON.stringify(body) : undefined,
-        });
-        setResults((prev) => [...prev, { name, success: res.success, message: res.success ? 'Passed' : res.error?.message }]);
+        const { expected, actual, status, msg } = await assertionFunc();
+        setResults((prev) => [...prev, { name, success: status, expected: JSON.stringify(expected), actual: JSON.stringify(actual), message: msg || (status ? 'Passed' : 'Assertion failed') }]);
       } catch (err: any) {
-        setResults((prev) => [...prev, { name, success: false, message: err.message }]);
+        setResults((prev) => [...prev, { name, success: false, expected: 'N/A', actual: 'Error', message: err.message }]);
       }
     };
 
-    await runScenario('Tenant Isolation: Fetch Dashboard Summary', '/reports/dashboard-summary');
-    await runScenario('Billing Engine: Test Payment Sandbox', '/payments/test-checkout', { invoiceId: 'test_invoice_123', amount: 100 });
-    
-    // Test AI module tracking
-    await runScenario('AI Module Audit: Enable AI Copilot', '/organizations/me', {
-      enabledModules: [...(organization?.enabledModules || []), 'ai_copilot'],
-      _enabledByAi: true
+    await runScenario('Tenant Isolation: Fetch Customers', async () => {
+      const res = await apiRequest('/customers');
+      const isArray = Array.isArray(res.data);
+      return { expected: 'Array of customers', actual: isArray ? `Array[${res.data.length}]` : typeof res.data, status: isArray && res.success };
+    });
+
+    await runScenario('Billing Engine: Reject missing invoice', async () => {
+      const res = await apiRequest('/payments/test-checkout', { method: 'POST', body: JSON.stringify({ invoiceId: '000000000000000000000000', amount: 100 }) });
+      return { expected: 'NOT_FOUND', actual: res.error?.code, status: res.error?.code === 'NOT_FOUND' };
+    });
+
+    await runScenario('AI Module Tracker: System deterministic fallback', async () => {
+      const orgState = await apiRequest('/organizations/profile');
+      const modules = orgState.data?.enabledModules || [];
+      const res = await apiRequest('/organizations/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({ enabledModules: [...modules, 'ai_copilot'], _enabledBySystem: true })
+      });
+      const audit = res.data?.moduleAudit?.find((a: any) => a.moduleId === 'ai_copilot');
+      return { expected: 'system', actual: audit?.enabledBy, status: audit?.enabledBy === 'system' };
     });
 
     setLoading(false);
@@ -63,14 +73,19 @@ export const BillingTestPage: React.FC = () => {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {results.map((r, i) => (
             <div key={i} style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              display: 'flex', flexDirection: 'column', gap: '0.5rem',
               padding: '1rem', background: '#f8fafc', border: `1px solid ${r.success ? '#bbf7d0' : '#fecdd3'}`,
               borderRadius: 'var(--radius-md)'
             }}>
-              <div style={{ fontWeight: 600 }}>{r.name}</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: r.success ? 'var(--color-success)' : 'var(--color-danger)' }}>
-                {r.success ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
-                {r.message}
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
+                <span>{r.name}</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: r.success ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                  {r.success ? <CheckCircle2 size={18} /> : <XCircle size={18} />} {r.message}
+                </span>
+              </div>
+              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+                <div><strong>Expected:</strong> <code>{r.expected}</code></div>
+                <div><strong>Actual:</strong> <code>{r.actual}</code></div>
               </div>
             </div>
           ))}

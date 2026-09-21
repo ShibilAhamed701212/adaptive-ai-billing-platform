@@ -7,6 +7,7 @@ import { UserModel } from '../../models/User.model';
 import { CustomFieldModel } from '../../models/CustomField.model';
 import { BILLING_MODEL_PRESETS } from '../../billing-engine/billing-models/presets';
 import { logAuditEvent } from '../../core/audit/audit.service';
+import { makeUniqueOrgSlug } from '../../core/utils/slug';
 import { ENV } from '../../config/env';
 import {
   modulesForBusinessType,
@@ -15,17 +16,6 @@ import {
 } from '@billing/shared';
 
 const VALID_BUSINESS_TYPES: BusinessType[] = ['retail', 'saas', 'services', 'general'];
-
-function makeSlug(name: string): string {
-  return (
-    name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '') +
-    '-' +
-    Math.floor(Math.random() * 1000)
-  );
-}
 
 function serializeOrg(org: any) {
   if (!org) return null;
@@ -99,7 +89,7 @@ export async function createOrganization(req: Request, res: Response, next: Next
 
     const organization = await OrganizationModel.create({
       name: String(name).trim(),
-      slug: makeSlug(String(name)),
+      slug: await makeUniqueOrgSlug(String(name)),
       billingModel: model,
       businessType: bt,
       enabledModules: modules,
@@ -245,15 +235,28 @@ export async function updateOrganizationSettings(req: Request, res: Response, ne
     if (name) org.name = String(name).trim();
     if (businessType && VALID_BUSINESS_TYPES.includes(businessType)) org.businessType = businessType;
     if (Array.isArray(enabledModules)) {
-      const addedModules = enabledModules.filter(m => !org.enabledModules.includes(m));
-      org.enabledModules = enabledModules;
+      // Validate modules against a known list (Phase 11 & 12 Requirement)
+      const validModules = [
+        'invoices', 'customers', 'products', 'payments', 'credit-notes', 'recurring',
+        'invoice-templates', 'approvals', 'users', 'audit-logs', 'dynamic', 'ai_copilot',
+        'reports', 'pos', 'inventory', 'suppliers', 'purchases', 'returns', 'shifts', 'expenses',
+        'subscriptions', 'projects'
+      ];
+      const sanitizedModules = enabledModules.filter((m: string) => validModules.includes(m));
+
+      const addedModules = sanitizedModules.filter((m: string) => !org.enabledModules.includes(m));
+      org.enabledModules = sanitizedModules;
       if (addedModules.length > 0) {
-        if (!org.moduleAudit) org.moduleAudit = [];
-        addedModules.forEach(moduleId => {
-          org.moduleAudit.push({
+        org.moduleAudit = org.moduleAudit || [];
+        addedModules.forEach((moduleId: string) => {
+          let enabledBy = 'admin';
+          if (req.body._enabledBySystem) enabledBy = 'system';
+          else if (req.body._enabledByAi) enabledBy = 'ai';
+          
+          org.moduleAudit!.push({
             moduleId,
-            enabledBy: req.body._enabledByAi ? 'ai' : 'admin',
-            timestamp: new Date()
+            enabledBy: enabledBy as any,
+            timestamp: new Date().toISOString(),
           });
         });
       }
@@ -377,7 +380,27 @@ export async function applyCustomArchitecture(req: Request, res: Response, next:
       org.billingModel = architecture.baseBillingModel;
     }
     if (architecture.recommendedModules && Array.isArray(architecture.recommendedModules)) {
-      org.enabledModules = Array.from(new Set([...org.enabledModules, ...architecture.recommendedModules]));
+      const validModules = [
+        'invoices', 'customers', 'products', 'payments', 'credit-notes', 'recurring',
+        'invoice-templates', 'approvals', 'users', 'audit-logs', 'dynamic', 'ai_copilot',
+        'reports', 'pos', 'inventory', 'suppliers', 'purchases', 'returns', 'shifts', 'expenses',
+        'subscriptions', 'projects'
+      ];
+      const sanitizedModules = architecture.recommendedModules.filter((m: string) => validModules.includes(m));
+      const addedModules = sanitizedModules.filter((m: string) => !org.enabledModules.includes(m));
+      
+      org.enabledModules = Array.from(new Set([...org.enabledModules, ...sanitizedModules]));
+      
+      if (addedModules.length > 0) {
+        org.moduleAudit = org.moduleAudit || [];
+        addedModules.forEach((moduleId: string) => {
+          org.moduleAudit!.push({
+            moduleId,
+            enabledBy: req.body._enabledBySystem ? 'system' : 'ai',
+            timestamp: new Date().toISOString(),
+          });
+        });
+      }
     }
     if (architecture.suggestedTaxSystem) {
       org.settings.taxSystem = architecture.suggestedTaxSystem;

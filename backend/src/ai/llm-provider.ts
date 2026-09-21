@@ -123,6 +123,13 @@ export async function callLLM(messages: LLMMessage[], options?: { json?: boolean
     }
   }
 
-  // Return null to allow caller to use smart deterministic heuristics
-  throw new Error('LLM_NOT_CONFIGURED: You must provide a valid GEMINI_API_KEY or OPENAI_API_KEY in .env to use AI features.');
+  // No LLM configured (or all providers failed) — return null so callers fall back to
+  // their deterministic heuristics. AI is an enhancement, never a hard dependency: core
+  // billing must work without an API key. Callers that genuinely require the LLM check
+  // for null and raise a proper 503 themselves.
+  const configured = Boolean((geminiKey && geminiKey.trim()) || (openaiKey && openaiKey.trim()));
+  if (!configured) {
+    console.warn('LLM_NOT_CONFIGURED: set GEMINI_API_KEY or OPENAI_API_KEY to enable AI features; using deterministic fallbacks.');
+  }
+  return null;
 }

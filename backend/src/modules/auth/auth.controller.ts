@@ -32,9 +32,7 @@ function inferBusinessType(billingModel?: string): BusinessType {
   }
 }
 
-function makeSlug(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') + '-' + Math.floor(Math.random() * 1000);
-}
+import { makeUniqueOrgSlug } from '../../core/utils/slug';
 
 /**
  * Guarantees a membership exists for the user's home organization.
@@ -153,7 +151,7 @@ export async function register(req: Request, res: Response, next: NextFunction):
 
     const organization = await OrganizationModel.create({
       name: organizationName,
-      slug: makeSlug(organizationName),
+      slug: await makeUniqueOrgSlug(organizationName),
       billingModel: selectedModel,
       businessType: bt,
       enabledModules: modulesForBusinessType(bt),

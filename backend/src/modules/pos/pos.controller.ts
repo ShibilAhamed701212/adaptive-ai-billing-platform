@@ -11,6 +11,7 @@ import { StoreCreditTransactionModel } from '../../models/StoreCreditTransaction
 import { LoyaltyTransactionModel } from '../../models/LoyaltyTransaction.model';
 import { logAuditEvent } from '../../core/audit/audit.service';
 import { calculateInvoice } from '../../billing-engine/calculators/invoice-calculator';
+import { reserveInvoiceNumber } from '../../billing-engine/next-invoice-number';
 
 export async function posCheckout(req: Request, res: Response, next: NextFunction): Promise<void> {
   const session = await mongoose.startSession();
@@ -151,12 +152,9 @@ export async function posCheckout(req: Request, res: Response, next: NextFunctio
       }
     }
     
-    // 4. Create Invoice
-    const prefix = org.settings.invoicePrefix || 'INV';
-    const nextSeq = org.settings.nextInvoiceNumber || 1001;
-    const invoiceNumber = `${prefix}-${new Date().getFullYear()}-${nextSeq}`;
-
-    await OrganizationModel.findByIdAndUpdate(orgId, { $inc: { 'settings.nextInvoiceNumber': 1 } }, { session });
+    // 4. Create Invoice — atomic number reservation inside the checkout transaction
+    // (BUG-04 regression guard: read-then-increment raced under concurrent checkouts).
+    const { invoiceNumber } = await reserveInvoiceNumber(orgId, session);
 
     // Auto-detect active shift if not explicitly provided
     let finalShiftId = shiftId ? new mongoose.Types.ObjectId(shiftId) : undefined;
@@ -222,7 +220,7 @@ export async function posCheckout(req: Request, res: Response, next: NextFunctio
         paymentDate: new Date().toISOString(),
         paymentMethod: sp.method,
         status: 'completed',
-        reference: invoiceNumber,
+        transactionReference: invoiceNumber,
         notes: sp.method === 'loyalty_points' ? `Loyalty Points Redemption (${pointsToRedeem} pts)` : 'POS Split Payment'
       });
       await payment.save({ session });

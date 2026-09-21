@@ -193,7 +193,7 @@ Respond with JSON format:
   }
 
   return {
-    answer: `Overview for **Nexus Cloud Technologies**:\n- **Total Invoiced:** ₹${totalRevenue.toLocaleString()}\n- **Total Collected:** ₹${totalCollected.toLocaleString()}\n- **Outstanding Receivables:** ₹${totalOutstanding.toLocaleString()}\n- **Active Customers:** ${customers.length}\n- **Invoices Awaiting Settlement:** ${overdueInvoices.length}`,
+    answer: `Financial overview:\n- **Total Invoiced:** ₹${totalRevenue.toLocaleString()}\n- **Total Collected:** ₹${totalCollected.toLocaleString()}\n- **Outstanding Receivables:** ₹${totalOutstanding.toLocaleString()}\n- **Active Customers:** ${customers.length}\n- **Invoices Awaiting Settlement:** ${overdueInvoices.length}`,
     chartData: {
       labels: ['Invoiced', 'Collected', 'Receivables'],
       datasets: [

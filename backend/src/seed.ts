@@ -74,9 +74,13 @@ export async function seedDatabase() {
   for (const p of retailProducts) {
     createdRetailProducts.push(await ProductModel.create({
       organizationId: orgRetail._id,
-      name: p.name, sku: p.sku, type: 'product', unit: 'pcs',
+      name: p.name, sku: p.sku, type: 'goods', unit: 'pcs',
       unitPrice: p.unitPrice, costPrice: p.costPrice,
-      inventory: { trackStock: true, currentStock: p.stock, minStockLevel: 20, allowOversell: false },
+      // Product schema fields: `inventory.*` would be silently dropped by strict mode,
+      // leaving every product with manageInventory:false and stockQuantity:0.
+      manageInventory: true,
+      stockQuantity: p.stock,
+      lowStockThreshold: 20,
       taxRate: 0.05, isActive: true
     }));
   }
@@ -109,6 +113,10 @@ export async function seedDatabase() {
 
     if (inv.status === 'paid') {
       await PaymentModel.create({ organizationId: orgRetail._id, invoiceId: inv._id, customerId: cust._id, amount: calc.totals.grandTotal, currency: 'INR', paymentDate: new Date(), paymentMethod: 'cash', status: 'completed' });
+    } else {
+      // Keep the customer ledger consistent with unpaid invoices (same invariant the
+      // API enforces: sent invoices count toward the customer's outstanding balance).
+      await CustomerModel.findByIdAndUpdate(cust._id, { $inc: { outstandingBalance: calc.totals.grandTotal } });
     }
   }
 
@@ -161,6 +169,9 @@ export async function seedDatabase() {
       amountDue: status === 'active' ? 0 : calc.totals.grandTotal,
       status: status === 'active' ? 'paid' : 'sent', createdBy: saasAdmin._id
     });
+    if (status !== 'active') {
+      await CustomerModel.findByIdAndUpdate(cust._id, { $inc: { outstandingBalance: calc.totals.grandTotal } });
+    }
   }
 
 
@@ -191,7 +202,7 @@ export async function seedDatabase() {
     }
 
     // Invoices
-    const calc = calculateInvoice([{ productId: 'HOURS', sku: 'HR', description: 'UX Wireframing (5 hours)', unit: 'hr', quantity: 5, unitPrice: 150, taxRate: 0.20 }], { taxSystem: 'VAT' });
+    const calc = calculateInvoice([{ sku: 'HR', description: 'UX Wireframing (5 hours)', unit: 'hr', quantity: 5, unitPrice: 150, taxRate: 0.20 }], { taxSystem: 'VAT' });
     await InvoiceModel.create({
       organizationId: orgAgency._id, invoiceNumber: `CRV-30${i}`, customerId: client._id, customerSnapshot: { name: client.name, email: client.email },
       issueDate: new Date(), dueDate: new Date(), currency: 'EUR', currencySymbol: '€',
@@ -215,13 +226,14 @@ export async function seedDatabase() {
 
   for(let i=1; i<=10; i++) {
     const cust = await CustomerModel.create({ organizationId: orgGen._id, name: `General Client ${i}`, email: `client${i}@general.test` });
-    const calc = calculateInvoice([{ productId: 'SVC', sku: 'CONSULT', description: 'General Consulting', unit: 'hr', quantity: 10, unitPrice: 200, taxRate: 0.10 }], { taxSystem: 'SALES_TAX' });
+    const calc = calculateInvoice([{ sku: 'CONSULT', description: 'General Consulting', unit: 'hr', quantity: 10, unitPrice: 200, taxRate: 0.10 }], { taxSystem: 'SALES_TAX' });
     await InvoiceModel.create({
       organizationId: orgGen._id, invoiceNumber: `ACM-40${i}`, customerId: cust._id, customerSnapshot: { name: cust.name, email: cust.email },
       issueDate: new Date(), dueDate: new Date(), currency: 'USD', currencySymbol: '$',
       items: calc.items, subtotal: calc.totals.rawSubtotal, taxTotal: calc.totals.taxTotal, grandTotal: calc.totals.grandTotal,
       amountPaid: 0, amountDue: calc.totals.grandTotal, status: 'sent', createdBy: genAdmin._id
     });
+    await CustomerModel.findByIdAndUpdate(cust._id, { $inc: { outstandingBalance: calc.totals.grandTotal } });
   }
 
   console.log('✅ Multi-Business Seeding completed successfully!');

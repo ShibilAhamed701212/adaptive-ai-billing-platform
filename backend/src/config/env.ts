@@ -3,12 +3,7 @@ import dns from 'dns';
 
 dotenv.config();
 
-// Ensure Atlas SRV records resolve reliably on Windows / local ISP DNS
-try {
-  dns.setServers(['8.8.8.8', '1.1.1.1']);
-} catch {
-  // Ignore fallback
-}
+
 
 export const ENV = {
   PORT: process.env.PORT || 5000,
