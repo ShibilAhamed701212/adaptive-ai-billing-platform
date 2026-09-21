@@ -18,7 +18,7 @@ export const ProductsPage: React.FC = () => {
   const [sku, setSku] = useState<string>('');
   const [description, setDescription] = useState<string>('');
   const [type, setType] = useState<'goods' | 'service' | 'subscription' | 'usage'>('goods');
-  const [unit, setUnit] = useState<string>('unit');
+  const [unit, setUnit] = useState<string>('');
   const [unitPrice, setUnitPrice] = useState<number>(0);
   const [taxRate, setTaxRate] = useState<number>(0.18);
   const [hsnSacCode, setHsnSacCode] = useState<string>('998313');
@@ -74,6 +74,7 @@ export const ProductsPage: React.FC = () => {
         setName('');
         setSku('');
         setDescription('');
+        setUnit('');
         setUnitPrice(0);
         setStockQuantity(0);
         setExpiryDate('');
