@@ -61,17 +61,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     persist(newToken, newUser, newOrg, newMemberships);
   };
 
-  const logout = () => {
-    void apiRequest('/auth/logout', { method: 'POST' });
+  const clearAuthState = useCallback(() => {
     setToken(null);
     setUser(null);
     setOrganization(null);
     setMemberships([]);
-    localStorage.removeItem(TOKEN_KEY); // remove legacy sessions created by older builds
+    localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
     localStorage.removeItem(ORG_KEY);
     localStorage.removeItem(MEMBERSHIPS_KEY);
-    window.location.href = '/login';
+  }, []);
+
+  const logout = () => {
+    void apiRequest('/auth/logout', { method: 'POST' });
+    clearAuthState();
+    if (!window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/register')) {
+      window.history.pushState({}, '', '/login');
+      window.dispatchEvent(new Event('popstate'));
+    }
   };
 
   const updateOrganization = (org: Organization) => {
@@ -90,10 +97,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setMemberships(res.data.memberships || []);
         persist(nextToken, res.data.user, res.data.organization, res.data.memberships || []);
       } else {
-        logout();
+        clearAuthState();
       }
     } catch {
-      logout();
+      clearAuthState();
     } finally {
       setIsLoading(false);
     }

@@ -132,3 +132,16 @@ export async function restoreTenantBackup(req: Request, res: Response, next: Nex
     next(err);
   }
 }
+
+export async function reseedAnalyticsData(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { seedDatabase } = await import('../../seed');
+    await seedDatabase();
+    res.json({
+      success: true,
+      message: 'MongoDB collections successfully populated with 12-month analytics and historical financial data!',
+    });
+  } catch (err) {
+    next(err);
+  }
+}
