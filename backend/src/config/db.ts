@@ -30,25 +30,15 @@ export async function connectDB(): Promise<void> {
     });
   } catch (error: any) {
     console.warn(`⚠️ [Database] Could not connect to MongoDB at ${ENV.MONGODB_URI}: ${error.message}`);
-    
-    if (ENV.NODE_ENV === 'development') {
-      console.log('🔄 [Database] Falling back to In-Memory MongoDB for local development...');
-      try {
-        const { MongoMemoryServer } = await import('mongodb-memory-server');
-        const mongoServer = await MongoMemoryServer.create();
-        const mongoUri = mongoServer.getUri();
-        await mongoose.connect(mongoUri);
-        console.log(`✅ [Database] Connected to In-Memory MongoDB at ${mongoUri}`);
-      } catch (memError: any) {
-        console.error('❌ [Database] Failed to start In-Memory MongoDB:', memError.message);
-      }
-    } else {
-      console.warn('💡 Tip: Start local MongoDB or Docker (`docker-compose up -d`) to enable database persistence.');
-      if (ENV.NODE_ENV === 'production') {
-        process.exit(1);
-      }
+    console.log('🔄 [Database] Falling back to In-Memory MongoDB for demonstration deployment...');
+    try {
+      const { MongoMemoryServer } = await import('mongodb-memory-server');
+      const mongoServer = await MongoMemoryServer.create();
+      const mongoUri = mongoServer.getUri();
+      await mongoose.connect(mongoUri);
+      console.log(`✅ [Database] Connected to In-Memory MongoDB at ${mongoUri}`);
+    } catch (memError: any) {
+      console.error('❌ [Database] Failed to start In-Memory MongoDB:', memError.message);
     }
   }
 }
-
-
