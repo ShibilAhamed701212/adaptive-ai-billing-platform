@@ -140,14 +140,14 @@ export async function seedDatabase() {
       const prod2 = createdRetailProducts[randomInt(0, createdRetailProducts.length - 1)];
 
       const isHighDiscount = j === 0 && m % 3 === 0;
-      const discountPct = isHighDiscount ? 0.25 : (j % 4 === 0 ? 0.05 : 0);
+      const discountPct = isHighDiscount ? 25 : (j % 4 === 0 ? 5 : 0);
 
       const items = [
-        { productId: String(prod1._id), sku: prod1.sku, description: prod1.name, unit: 'pcs', quantity: randomInt(2, 6), unitPrice: prod1.unitPrice, taxRate: 0.05 },
+        { productId: String(prod1._id), sku: prod1.sku, description: prod1.name, unit: 'pcs', quantity: randomInt(2, 6), unitPrice: prod1.unitPrice, discountPercentage: discountPct, taxRate: 0.05 },
         { productId: String(prod2._id), sku: prod2.sku, description: prod2.name, unit: 'pcs', quantity: randomInt(1, 4), unitPrice: prod2.unitPrice, taxRate: 0.05 }
       ];
 
-      const calc = calculateInvoice(items, { taxSystem: 'GST', discountType: 'percentage', discountValue: discountPct * 100 });
+      const calc = calculateInvoice(items, { taxSystem: 'GST' });
       
       const isOverdue = daysBack > 15 && (j % 5 === 0);
       const isPaid = !isOverdue && (j % 6 !== 0);
@@ -165,7 +165,7 @@ export async function seedDatabase() {
         currency: 'INR', currencySymbol: '₹',
         items: calc.items,
         subtotal: calc.totals.rawSubtotal,
-        discountTotal: calc.totals.discountTotal,
+        discountTotal: calc.totals.totalDiscount,
         taxTotal: calc.totals.taxTotal,
         grandTotal: calc.totals.grandTotal,
         amountPaid, amountDue, status,

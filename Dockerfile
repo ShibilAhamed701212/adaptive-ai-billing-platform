@@ -1,42 +1,42 @@
 # Stage 1: Build dependencies, shared types, backend, and frontend
-FROM node:20-alpine AS builder
+FROM node:20-slim AS builder
 
 WORKDIR /app
 
-# Copy workspace package manifests
+# Copy workspace manifests
 COPY package*.json ./
 COPY shared/package*.json ./shared/
 COPY backend/package*.json ./backend/
 COPY frontend/package*.json ./frontend/
 
-# Install all dependencies (including devDependencies for TypeScript & Vite)
-RUN npm ci
+# Install dependencies for building
+RUN npm install
 
-# Copy source files
+# Copy source code
 COPY shared/ ./shared/
 COPY backend/ ./backend/
 COPY frontend/ ./frontend/
 
-# Compile shared library, backend TypeScript, and frontend Vite bundle
+# Build shared library, backend, and frontend bundle
 RUN npm run build --workspace=shared
 RUN npm run build --workspace=backend
 RUN npm run build --workspace=frontend
 
-# Stage 2: Lean production runtime image
-FROM node:20-alpine AS runner
+# Stage 2: Production runtime image
+FROM node:20-slim AS runner
 
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=10000
 
-# Copy manifests for production install
+# Copy manifests for production installation
 COPY package*.json ./
 COPY shared/package*.json ./shared/
 COPY backend/package*.json ./backend/
 
-# Install production dependencies only
-RUN npm ci --omit=dev
+# Install production dependencies
+RUN npm install --omit=dev
 
 # Copy compiled artifacts from builder
 COPY --from=builder /app/shared/dist ./shared/dist
