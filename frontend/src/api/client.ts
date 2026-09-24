@@ -26,6 +26,7 @@ export async function apiRequest<T = any>(
         localStorage.removeItem('billing_auth_token');
         localStorage.removeItem('billing_user');
         localStorage.removeItem('billing_org');
+        window.location.href = '/login';
       }
     }
 

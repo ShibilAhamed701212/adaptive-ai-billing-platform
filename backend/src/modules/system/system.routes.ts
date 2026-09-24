@@ -4,9 +4,9 @@ import { exportTenantBackup, restoreTenantBackup, reseedAnalyticsData } from './
 
 const router = Router();
 
-router.post('/reseed-analytics', reseedAnalyticsData);
-
 router.use(tenantMiddleware);
+
+router.post('/reseed-analytics', requireRole(['admin']), reseedAnalyticsData);
 
 router.get('/backup', requireRole(['admin']), exportTenantBackup);
 router.post('/backup', requireRole(['admin']), exportTenantBackup);
