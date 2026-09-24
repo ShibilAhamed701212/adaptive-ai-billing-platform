@@ -128,13 +128,17 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({ onNavigate }) => {
   // Export CSV
   const handleExportCSV = () => {
     const headers = ['Payment Date', 'Invoice ID', 'Method', 'Transaction Ref', 'Amount (INR)', 'Status'];
+    const escapeCSV = (val: any) => {
+      const str = String(val ?? '');
+      return str.includes(',') || str.includes('"') || str.includes('\n') ? `"${str.replace(/"/g, '""')}"` : str;
+    };
     const rows = filteredPayments.map((p) => [
-      p.paymentDate,
-      p.invoiceId,
-      p.paymentMethod,
-      p.transactionReference || 'N/A',
+      escapeCSV(p.paymentDate),
+      escapeCSV(p.invoiceId),
+      escapeCSV(p.paymentMethod),
+      escapeCSV(p.transactionReference || 'N/A'),
       p.amount,
-      p.status,
+      escapeCSV(p.status),
     ]);
 
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');

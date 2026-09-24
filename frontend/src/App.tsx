@@ -164,7 +164,7 @@ function RouterShell() {
 
   // Onboarding enforcement: authenticated users with an incomplete organization
   // are kept in the onboarding flow until they complete or deliberately skip it.
-  const isOnboarded = organization?.isOnboarded !== false;
+  const isOnboarded = organization != null && organization.isOnboarded !== false;
   const onboardingExempt = currentPath === '/onboarding' || currentPath === '/organizations/new';
   if (!isOnboarded && !onboardingExempt) {
     return (

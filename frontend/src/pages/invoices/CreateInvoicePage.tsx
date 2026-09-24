@@ -159,6 +159,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
         unitPrice: prod.unitPrice,
         taxRate: prod.taxRate,
         hsnSacCode: prod.hsnSacCode,
+        discountAmount: 0,
       };
       return updated;
     });
@@ -244,7 +245,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
       const res = await fetch('/api/v1/ai/ocr/upload', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('billing_auth_token')}`
         },
         body: formData
       });

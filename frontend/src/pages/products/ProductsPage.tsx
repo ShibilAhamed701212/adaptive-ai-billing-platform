@@ -74,8 +74,11 @@ export const ProductsPage: React.FC = () => {
         setName('');
         setSku('');
         setDescription('');
+        setType('goods');
         setUnit('');
         setUnitPrice(0);
+        setTaxRate(0.18);
+        setHsnSacCode('998313');
         setStockQuantity(0);
         setExpiryDate('');
         setCustomFields({});
@@ -326,9 +329,10 @@ export const ProductsPage: React.FC = () => {
                   <input
                     type="number"
                     required
+                    step="any"
                     className="form-input"
-                    value={unitPrice}
-                    onChange={(e) => setUnitPrice(parseFloat(e.target.value) || 0)}
+                    value={unitPrice || ''}
+                    onChange={(e) => setUnitPrice(e.target.value === '' ? 0 : parseFloat(e.target.value))}
                   />
                   <span className="element-desc">Default unit rate</span>
                 </div>
