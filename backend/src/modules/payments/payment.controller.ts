@@ -299,52 +299,66 @@ export async function refundPayment(req: Request, res: Response, next: NextFunct
 
     const refundAmount = Math.round(requested * 100) / 100;
 
-    // Atomic claim (concurrency guard): the refundable balance is re-checked SERVER-SIDE at
-    // write time, so two concurrent refunds can never both pass the in-memory check above and
-    // refund (and re-open on the customer's account) more than the payment was worth.
+    // The payment claim, invoice and customer balance change together in one transaction, so a
+    // failure part-way can never leave a refunded payment against an unchanged invoice/balance.
+    // The claim re-checks the refundable balance SERVER-SIDE at write time, so two concurrent
+    // refunds can never both pass the in-memory check above (the loser gets 409).
     const refundNote = `Refunded ₹${refundAmount}: ${reason || 'N/A'}`;
-    const claimed = await PaymentModel.findOneAndUpdate(
-      {
-        _id: payment._id,
-        organizationId: new mongoose.Types.ObjectId(orgId),
-        status: 'completed',
-        $expr: { $lte: [{ $add: [{ $ifNull: ['$refundedAmount', 0] }, refundAmount] }, { $add: ['$amount', 0.001] }] },
-      },
-      [
-        { $set: { refundedAmount: { $round: [{ $add: [{ $ifNull: ['$refundedAmount', 0] }, refundAmount] }, 2] } } },
-        {
-          $set: {
-            status: { $cond: [{ $gte: ['$refundedAmount', { $subtract: ['$amount', 0.001] }] }, 'refunded', 'completed'] },
-            notes: { $concat: [{ $cond: [{ $gt: [{ $strLenCP: { $ifNull: ['$notes', ''] } }, 0] }, { $concat: ['$notes', ' | '] }, ''] }, { $literal: refundNote }] },
+    let claimed: any = null;
+    let invoice: any = null;
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        claimed = await PaymentModel.findOneAndUpdate(
+          {
+            _id: payment._id,
+            organizationId: new mongoose.Types.ObjectId(orgId),
+            status: 'completed',
+            $expr: { $lte: [{ $add: [{ $ifNull: ['$refundedAmount', 0] }, refundAmount] }, { $add: ['$amount', 0.001] }] },
           },
-        },
-      ],
-      { new: true }
-    );
+          [
+            { $set: { refundedAmount: { $round: [{ $add: [{ $ifNull: ['$refundedAmount', 0] }, refundAmount] }, 2] } } },
+            {
+              $set: {
+                status: { $cond: [{ $gte: ['$refundedAmount', { $subtract: ['$amount', 0.001] }] }, 'refunded', 'completed'] },
+                notes: { $concat: [{ $cond: [{ $gt: [{ $strLenCP: { $ifNull: ['$notes', ''] } }, 0] }, { $concat: ['$notes', ' | '] }, ''] }, { $literal: refundNote }] },
+              },
+            },
+          ],
+          { new: true, session }
+        );
+        invoice = null;
+        if (!claimed) return;
+
+        // Tenant scoping fix (BUG-10): the invoice must be looked up scoped to the caller's
+        // organization — findById alone could mutate another tenant's invoice document.
+        invoice = await InvoiceModel.findOne({
+          _id: payment.invoiceId,
+          organizationId: new mongoose.Types.ObjectId(orgId),
+        }).session(session);
+        if (invoice) {
+          invoice.amountPaid = Math.max(0, Math.round((invoice.amountPaid - refundAmount) * 100) / 100);
+          invoice.amountDue = Math.min(invoice.grandTotal, Math.round((invoice.amountDue + refundAmount) * 100) / 100);
+          invoice.status = invoice.amountPaid === 0 ? 'sent' : 'partially_paid';
+          await invoice.save({ session });
+
+          // Increase customer outstanding balance back
+          await CustomerModel.updateOne(
+            { _id: invoice.customerId, organizationId: new mongoose.Types.ObjectId(orgId) },
+            { $inc: { outstandingBalance: refundAmount } },
+            { session }
+          );
+        }
+      });
+    } finally {
+      await session.endSession();
+    }
     if (!claimed) {
       res.status(409).json({
         success: false,
         error: { code: 'CONCURRENT_REFUND_CONFLICT', message: 'Payment was concurrently refunded; refund not applied' },
       });
       return;
-    }
-
-    // Tenant scoping fix (BUG-10): the invoice must be looked up scoped to the caller's
-    // organization — findById alone could mutate another tenant's invoice document.
-    const invoice = await InvoiceModel.findOne({
-      _id: payment.invoiceId,
-      organizationId: new mongoose.Types.ObjectId(orgId),
-    });
-    if (invoice) {
-      invoice.amountPaid = Math.max(0, Math.round((invoice.amountPaid - refundAmount) * 100) / 100);
-      invoice.amountDue = Math.min(invoice.grandTotal, Math.round((invoice.amountDue + refundAmount) * 100) / 100);
-      invoice.status = invoice.amountPaid === 0 ? 'sent' : 'partially_paid';
-      await invoice.save();
-
-      // Increase customer outstanding balance back
-      await CustomerModel.findByIdAndUpdate(invoice.customerId, {
-        $inc: { outstandingBalance: refundAmount },
-      });
     }
 
     await logAuditEvent({

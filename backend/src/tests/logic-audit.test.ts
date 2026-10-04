@@ -11,7 +11,7 @@
  *  - BUG-12:    callLLM returns null (deterministic fallback) without API keys
  *  - BUG-13:    no hard-coded demo organization name in AI responses
  */
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import mongoose from 'mongoose';
 import '../core/tenancy/tenant.middleware';
 import { calculateInvoice } from '../billing-engine/calculators/invoice-calculator';
@@ -25,7 +25,7 @@ import { InvoiceModel } from '../models/Invoice.model';
 import { PaymentModel } from '../models/Payment.model';
 import { callLLM } from '../ai/llm-provider';
 
-let mongo: MongoMemoryServer;
+let mongo: MongoMemoryReplSet;
 
 function mockRes(): any {
   const res: any = {};
@@ -65,8 +65,9 @@ async function run() {
   process.env.GEMINI_API_KEY = '';
   process.env.OPENAI_API_KEY = '';
 
-  mongo = await MongoMemoryServer.create();
-  await mongoose.connect(mongo.getUri(), { directConnection: true });
+  // Replica set: invoice, payment and refund writes run in transactions, as in production.
+  mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
+  await mongoose.connect(mongo.getUri());
 
   await OrganizationModel.init();
   await CustomerModel.init();

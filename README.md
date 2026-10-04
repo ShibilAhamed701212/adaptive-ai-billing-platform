@@ -124,7 +124,7 @@ npm install
 ```bash
 docker compose up -d --wait
 ```
-This starts `mongo:7.0` as a single-node replica set (`rs0`) on port 27017 and initiates it on first start. A plain standalone `mongod` is not enough: POS checkout, payments, returns, stock adjustments and restores fail with "Transaction numbers are only allowed on a replica set member".
+This starts `mongo:7.0` as a single-node replica set (`rs0`) on port 27017 and initiates it on first start. A plain standalone `mongod` is not enough: invoice creation, POS checkout, payments, refunds, returns, stock adjustments and restores fail with "Transaction numbers are only allowed on a replica set member".
 
 ### 3. Configure
 The API loads `.env` from its working directory, which is `backend/` when started through npm:
@@ -219,7 +219,7 @@ Playwright specs in `frontend/e2e` need the frontend, API and seeded demo data r
 - The Stripe payment provider is a stub; only the sandbox test checkout records payments. There is no payment-gateway webhook flow.
 - Business rules are evaluated when an invoice is created. Editing a draft afterwards does not re-run them.
 - Only `require_approval` and `set_field` rule actions change the saved invoice; `apply_discount` and `add_surcharge` are reported in `ruleEffects` but not applied to totals.
-- Refunds and the sandbox checkout update the invoice with read-modify-write; a refund racing a new payment on the same invoice can lose one of the two invoice updates (the payment record itself is guarded).
+- The sandbox test checkout updates the invoice with read-modify-write outside a transaction, so it can race a concurrent payment on the same invoice.
 - The session lasts 7 days with no refresh-token rotation; logout clears the cookie but does not revoke the token server-side (password changes and membership changes do).
 - The frontend bundle is a single ~850 kB chunk (Vite warns); no ESLint configuration is present.
 - `npm audit` reports high-severity advisories in Tailwind CSS 3's build-time file watcher chain (`braces`/`micromatch`); fixing them requires Tailwind 4. Production dependencies report no known vulnerabilities.

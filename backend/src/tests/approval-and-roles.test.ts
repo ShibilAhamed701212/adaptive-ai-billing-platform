@@ -4,6 +4,9 @@ import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { createApp } from '../app';
 import { CustomerModel } from '../models/Customer.model';
+import { InvoiceModel } from '../models/Invoice.model';
+import { PaymentModel } from '../models/Payment.model';
+import { ApprovalQueueModel } from '../models/ApprovalQueue.model';
 
 /**
  * Regression tests for:
@@ -75,6 +78,18 @@ async function run() {
     assert.ok(!pending.body.data.some((item: any) => String(item.entityId) === held.body.data._id), 'cancelled invoice leaves the queue');
     console.log('✅ Cancelling a held invoice closes its approval request');
 
+    // A failed queue write rolls the held invoice back instead of stranding it.
+    const invoicesBefore = await InvoiceModel.countDocuments({});
+    const originalCreate = ApprovalQueueModel.create.bind(ApprovalQueueModel);
+    (ApprovalQueueModel as any).create = async () => { throw Object.assign(new Error('simulated queue failure'), { statusCode: 500 }); };
+    await admin
+      .post('/api/v1/invoices')
+      .send({ customerId, items: [{ description: 'Doomed bulk order', quantity: 20, unitPrice: 1000 }] })
+      .expect(500);
+    (ApprovalQueueModel as any).create = originalCreate;
+    assert.equal(await InvoiceModel.countDocuments({}), invoicesBefore, 'invoice rolled back with its queue entry');
+    console.log('✅ Invoice and approval request are written atomically');
+
     // 2. The sales role can do the front-line actions guarded for it; viewers still cannot.
     const org = await admin.get('/api/v1/organizations/profile').expect(200);
     const modules = Array.from(new Set([...(org.body.data.enabledModules || []), 'inventory', 'expenses', 'returns']));
@@ -117,6 +132,21 @@ async function run() {
     assert.equal(refunded.body.data[0].status, 'refunded');
     assert.equal((refunded.body.data[0].notes.match(/Refunded ₹500/g) || []).length, 1, 'refund note recorded once');
     console.log('✅ Concurrent refunds of one payment apply once');
+
+    // A failure after the claim rolls the refund back.
+    const second = await admin.post('/api/v1/invoices').send({ customerId, status: 'sent', items: [{ description: 'Second order', quantity: 1, unitPrice: 300 }] }).expect(201);
+    const pay2 = await admin.post('/api/v1/payments').send({ invoiceId: second.body.data._id, amount: 300, paymentMethod: 'cash' }).expect(201);
+    const originalUpdateOne = CustomerModel.updateOne.bind(CustomerModel);
+    (CustomerModel as any).updateOne = () => { throw Object.assign(new Error('simulated balance failure'), { statusCode: 500 }); };
+    const failed = await admin.post(`/api/v1/payments/${pay2.body.data.payment._id}/refund`).send({ reason: 'simulated' });
+    assert.equal(failed.status, 500, JSON.stringify(failed.body));
+    (CustomerModel as any).updateOne = originalUpdateOne;
+    const untouched = await PaymentModel.findById(pay2.body.data.payment._id).lean();
+    assert.equal(untouched!.refundedAmount, 0, 'payment claim rolled back');
+    assert.equal(untouched!.status, 'completed');
+    const invoiceAfter = await InvoiceModel.findById(second.body.data._id).lean();
+    assert.equal(invoiceAfter!.status, 'paid', 'invoice unchanged');
+    console.log('✅ Refund claim, invoice and balance are written atomically');
 
     console.log('\nAPPROVAL/ROLE/REFUND TESTS PASSED');
   } finally {
