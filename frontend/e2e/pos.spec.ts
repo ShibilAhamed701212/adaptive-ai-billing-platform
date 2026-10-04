@@ -48,11 +48,11 @@ test.describe('Adaptive AI Billing & POS Platform E2E Tests', () => {
     await expect(page.locator('text=Customer Directory')).toBeVisible({ timeout: 10000 });
 
     // Navigate to Financial Reports
-    await page.click('button:has-text("Financial Reports")');
+    await page.click('button:has-text("Reports")');
     await expect(page.locator('text=Financial Intelligence & Reports')).toBeVisible({ timeout: 10000 });
 
     // Navigate to Inventory & Stock
-    await page.click('button:has-text("Inventory & Stock")');
+    await page.click('button:has-text("Inventory")');
     await expect(page.locator('text=Inventory Management')).toBeVisible({ timeout: 10000 });
   });
 

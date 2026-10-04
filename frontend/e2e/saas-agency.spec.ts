@@ -12,20 +12,20 @@ test('SaaS plan and subscription screens load real seeded records', async ({ pag
   await login(page, 'admin@saas.test');
   await page.click('button:has-text("Plans")');
   await expect(page.locator('h1')).toContainText('Pricing Plans');
-  await expect(page.locator('text=Starter')).toBeVisible();
+  await expect(page.locator('text=Starter').first()).toBeVisible();
   await page.click('button:has-text("Subscriptions")');
   await expect(page.locator('h1')).toContainText('Subscriptions');
-  await expect(page.locator('text=Tech Corp 1')).toBeVisible();
+  await expect(page.locator('td:has-text("AcroTech Solutions")').first()).toBeVisible();
 });
 
 test('Agency project, timesheet, and retainer screens load real seeded records', async ({ page }) => {
   await login(page, 'admin@agency.test');
   await page.click('button:has-text("Projects")');
   await expect(page.locator('h1')).toContainText('Projects');
-  await expect(page.locator('text=Website Redesign 1')).toBeVisible();
+  await expect(page.locator('text=Luxe Fashion Paris - Full Rebrand').first()).toBeVisible();
   await page.click('button:has-text("Timesheets")');
   await expect(page.locator('h1')).toContainText('Timesheets');
-  await expect(page.locator('text=UX Wireframing')).toBeVisible();
+  await expect(page.locator('text=UI/UX Wireframes').first()).toBeVisible();
   await page.click('button:has-text("Retainers")');
   await expect(page.locator('h1')).toContainText('Retainers');
 });

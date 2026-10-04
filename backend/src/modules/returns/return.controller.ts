@@ -9,6 +9,7 @@ import { InventoryMovementModel } from '../../models/InventoryMovement.model';
 import { StoreCreditTransactionModel } from '../../models/StoreCreditTransaction.model';
 import { LedgerTransactionModel } from '../../models/LedgerTransaction.model';
 import { logAuditEvent } from '../../core/audit/audit.service';
+import { parsePagination } from '../../core/utils/query';
 
 export async function listReturns(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -18,9 +19,9 @@ export async function listReturns(req: Request, res: Response, next: NextFunctio
     const query: any = { organizationId: new mongoose.Types.ObjectId(orgId) };
     if (invoiceId) query.invoiceId = new mongoose.Types.ObjectId(String(invoiceId));
 
-    const skip = (Number(page) - 1) * Number(limit);
+    const { page: pageNum, limit: pageSize, skip } = parsePagination(page, limit);
     const [returns, total] = await Promise.all([
-      ReturnModel.find(query).sort({ createdAt: -1 }).skip(skip).limit(Number(limit)),
+      ReturnModel.find(query).sort({ createdAt: -1 }).skip(skip).limit(pageSize),
       ReturnModel.countDocuments(query),
     ]);
 
@@ -28,10 +29,10 @@ export async function listReturns(req: Request, res: Response, next: NextFunctio
       success: true,
       data: returns,
       pagination: {
-        page: Number(page),
-        limit: Number(limit),
+        page: pageNum,
+        limit: pageSize,
         total,
-        totalPages: Math.ceil(total / Number(limit)),
+        totalPages: Math.ceil(total / pageSize),
       },
     });
   } catch (err) {

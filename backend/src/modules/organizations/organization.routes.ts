@@ -4,6 +4,8 @@ import {
   listMyOrganizations,
   createOrganization,
   switchOrganization,
+  acceptInvitation,
+  declineInvitation,
   updateOrganizationSettings,
   switchBillingModel,
   applyCustomArchitecture,
@@ -18,6 +20,8 @@ router.use(tenantMiddleware);
 router.get('/mine', listMyOrganizations);
 router.post('/', createOrganization);
 router.post('/switch', switchOrganization);
+router.post('/invitations/:membershipId/accept', acceptInvitation);
+router.post('/invitations/:membershipId/decline', declineInvitation);
 
 router.get('/profile', getOrganizationProfile);
 router.patch('/settings', requireRole(['admin', 'manager']), updateOrganizationSettings);

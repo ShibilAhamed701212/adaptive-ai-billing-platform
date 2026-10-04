@@ -5,6 +5,7 @@ import { ProductModel } from '../../models/Product.model';
 import { SupplierModel } from '../../models/Supplier.model';
 import { InventoryMovementModel } from '../../models/InventoryMovement.model';
 import { logAuditEvent } from '../../core/audit/audit.service';
+import { parsePagination } from '../../core/utils/query';
 
 export async function listPurchases(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -13,11 +14,11 @@ export async function listPurchases(req: Request, res: Response, next: NextFunct
 
     const query: any = { organizationId: new mongoose.Types.ObjectId(orgId) };
     if (supplierId) query.supplierId = new mongoose.Types.ObjectId(String(supplierId));
-    if (status) query.status = status;
+    if (status) query.status = String(status);
 
-    const skip = (Number(page) - 1) * Number(limit);
+    const { page: pageNum, limit: pageSize, skip } = parsePagination(page, limit);
     const [purchases, total] = await Promise.all([
-      PurchaseModel.find(query).sort({ date: -1, createdAt: -1 }).skip(skip).limit(Number(limit)),
+      PurchaseModel.find(query).sort({ date: -1, createdAt: -1 }).skip(skip).limit(pageSize),
       PurchaseModel.countDocuments(query),
     ]);
 
@@ -25,10 +26,10 @@ export async function listPurchases(req: Request, res: Response, next: NextFunct
       success: true,
       data: purchases,
       pagination: {
-        page: Number(page),
-        limit: Number(limit),
+        page: pageNum,
+        limit: pageSize,
         total,
-        totalPages: Math.ceil(total / Number(limit)),
+        totalPages: Math.ceil(total / pageSize),
       },
     });
   } catch (err) {

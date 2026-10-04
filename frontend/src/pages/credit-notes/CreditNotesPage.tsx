@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { apiRequest } from '../../api/client';
+import { apiRequest, fetchAllPages } from '../../api/client';
 import { CreditNote, Invoice } from '@billing/shared';
 import {
   FileMinus,
@@ -12,12 +12,16 @@ import {
   X,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { useCurrencySymbol } from '../../utils/currency';
+import { useTaxSystem } from '../../utils/tax';
 
 interface CreditNotesPageProps {
   onNavigate?: (path: string) => void;
 }
 
 export const CreditNotesPage: React.FC<CreditNotesPageProps> = ({ onNavigate }) => {
+  const currencySymbol = useCurrencySymbol();
+  const { label: taxLabel } = useTaxSystem();
   const [creditNotes, setCreditNotes] = useState<CreditNote[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -38,7 +42,7 @@ export const CreditNotesPage: React.FC<CreditNotesPageProps> = ({ onNavigate }) 
     try {
       const [cnRes, invRes] = await Promise.all([
         apiRequest<CreditNote[]>('/credit-notes'),
-        apiRequest<Invoice[]>('/invoices'),
+        fetchAllPages<Invoice>('/invoices'),
       ]);
 
       if (cnRes.success && cnRes.data) setCreditNotes(cnRes.data);
@@ -108,7 +112,7 @@ export const CreditNotesPage: React.FC<CreditNotesPageProps> = ({ onNavigate }) 
         <div>
           <h1 style={{ fontSize: '1.6rem', margin: 0 }}>Credit Notes & Rebates</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: '0.2rem 0 0' }}>
-            Issue GST-compliant credit notes and settle account balances against original tax invoices
+            Issue {taxLabel === 'Tax' ? 'tax' : taxLabel}-compliant credit notes and settle account balances against original tax invoices
           </p>
         </div>
 
@@ -125,7 +129,7 @@ export const CreditNotesPage: React.FC<CreditNotesPageProps> = ({ onNavigate }) 
             <FileMinus size={18} color="var(--color-warning)" />
           </div>
           <div className="kpi-value" style={{ color: 'var(--color-warning)' }}>
-            ₹{totalCreditIssued.toLocaleString()}
+            {currencySymbol}{totalCreditIssued.toLocaleString()}
           </div>
           <div className="kpi-desc">Total balance reduction across accounts</div>
         </div>
@@ -209,7 +213,7 @@ export const CreditNotesPage: React.FC<CreditNotesPageProps> = ({ onNavigate }) 
                     {new Date(cn.createdAt).toLocaleDateString()}
                   </td>
                   <td className="num-mono" style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--color-warning)' }}>
-                    ₹{cn.totalAmount.toLocaleString()}
+                    {currencySymbol}{cn.totalAmount.toLocaleString()}
                   </td>
                   <td>
                     <span className="badge badge-paid" style={{ textTransform: 'uppercase', fontSize: '0.7rem' }}>
@@ -270,14 +274,14 @@ export const CreditNotesPage: React.FC<CreditNotesPageProps> = ({ onNavigate }) 
                   <option value="">-- Choose Invoice --</option>
                   {invoices.map((inv) => (
                     <option key={inv._id} value={inv._id}>
-                      #{inv.invoiceNumber} - {inv.customerSnapshot?.name} (Total: ₹{inv.grandTotal.toLocaleString()})
+                      #{inv.invoiceNumber} - {inv.customerSnapshot?.name} (Total: {currencySymbol}{inv.grandTotal.toLocaleString()})
                     </option>
                   ))}
                 </select>
               </div>
 
               <div className="form-group" style={{ marginBottom: '1rem' }}>
-                <label className="form-label">Credit Amount (₹) *</label>
+                <label className="form-label">Credit Amount ({currencySymbol}) *</label>
                 <input
                   type="number"
                   className="form-input num-mono"
@@ -367,7 +371,7 @@ export const CreditNotesPage: React.FC<CreditNotesPageProps> = ({ onNavigate }) 
               <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border-subtle)', paddingTop: '0.5rem', fontWeight: 700, fontSize: '1.05rem' }}>
                 <span>Credit Amount:</span>
                 <span style={{ color: 'var(--color-warning)', fontFamily: 'var(--font-mono)' }}>
-                  ₹{selectedNote.totalAmount.toLocaleString()}
+                  {currencySymbol}{selectedNote.totalAmount.toLocaleString()}
                 </span>
               </div>
             </div>

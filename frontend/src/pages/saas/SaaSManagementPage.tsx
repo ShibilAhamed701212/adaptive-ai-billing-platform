@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { CreditCard, Layers, Plus, RefreshCw, Users } from 'lucide-react';
-import { apiRequest } from '../../api/client';
+import { apiRequest, fetchAllPages } from '../../api/client';
 import { useToast } from '../../components/common/Toast';
 
 type Section = 'plans' | 'subscriptions';
@@ -18,7 +18,7 @@ export const SaaSManagementPage: React.FC<{ section: Section }> = ({ section }) 
   const load = async () => {
     setLoading(true); setError('');
     const [plansRes, customersRes, subscriptionsRes] = await Promise.all([
-      apiRequest('/saas/plans'), apiRequest('/customers'), apiRequest('/saas/subscriptions'),
+      apiRequest('/saas/plans'), fetchAllPages('/customers'), apiRequest('/saas/subscriptions'),
     ]);
     if (!plansRes.success || !customersRes.success || !subscriptionsRes.success) {
       setError(plansRes.error?.message || customersRes.error?.message || subscriptionsRes.error?.message || 'Unable to load SaaS data');

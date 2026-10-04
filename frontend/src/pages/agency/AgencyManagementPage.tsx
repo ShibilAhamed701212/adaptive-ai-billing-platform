@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Briefcase, Clock4, Plus, RefreshCw, ShieldCheck } from 'lucide-react';
-import { apiRequest } from '../../api/client';
+import { apiRequest, fetchAllPages } from '../../api/client';
 import { useToast } from '../../components/common/Toast';
 
 type Section = 'projects' | 'timesheets' | 'retainers';
@@ -13,7 +13,7 @@ export const AgencyManagementPage: React.FC<{ section: Section }> = ({ section }
   const [timesheet, setTimesheet] = useState({ projectId: '', date: date(), hours: '', description: '', isBillable: true });
   const [retainer, setRetainer] = useState({ clientId: '', amount: '', billingPeriod: 'monthly' });
   const endpoint = `/agency/${section}`;
-  const load = async () => { setLoading(true); setError(''); const [customerRes, projectRes, recordRes] = await Promise.all([apiRequest('/customers'), apiRequest('/agency/projects'), apiRequest(endpoint)]); if (!customerRes.success || !projectRes.success || !recordRes.success) setError(customerRes.error?.message || projectRes.error?.message || recordRes.error?.message || 'Unable to load agency data'); setCustomers(customerRes.data || []); setProjects(projectRes.data || []); setRecords(recordRes.data || []); setLoading(false); };
+  const load = async () => { setLoading(true); setError(''); const [customerRes, projectRes, recordRes] = await Promise.all([fetchAllPages('/customers'), apiRequest('/agency/projects'), apiRequest(endpoint)]); if (!customerRes.success || !projectRes.success || !recordRes.success) setError(customerRes.error?.message || projectRes.error?.message || recordRes.error?.message || 'Unable to load agency data'); setCustomers(customerRes.data || []); setProjects(projectRes.data || []); setRecords(recordRes.data || []); setLoading(false); };
   useEffect(() => { load(); }, [section]);
   const submit = async (event: React.FormEvent) => { event.preventDefault(); const body = section === 'projects' ? { ...project, hourlyRate: project.hourlyRate ? Number(project.hourlyRate) : undefined, budget: project.budget ? Number(project.budget) : undefined } : section === 'timesheets' ? { ...timesheet, hours: Number(timesheet.hours) } : { ...retainer, amount: Number(retainer.amount) }; const res = await apiRequest(endpoint, { method: 'POST', body: JSON.stringify(body) }); if (!res.success) return setError(res.error?.message || `Unable to create ${section.slice(0, -1)}`); if (section === 'projects') setProject({ clientId: '', name: '', hourlyRate: '', budget: '' }); if (section === 'timesheets') setTimesheet({ projectId: '', date: date(), hours: '', description: '', isBillable: true }); if (section === 'retainers') setRetainer({ clientId: '', amount: '', billingPeriod: 'monthly' }); toast.show(`${section.slice(0, -1)} created`, 'success'); load(); };
   const config = section === 'projects' ? { title: 'Projects', icon: Briefcase, subtitle: 'Track client engagements, rates, and budgets.' } : section === 'timesheets' ? { title: 'Timesheets', icon: Clock4, subtitle: 'Record billable work against a client project.' } : { title: 'Retainers', icon: ShieldCheck, subtitle: 'Manage prepaid client balances by billing period.' };

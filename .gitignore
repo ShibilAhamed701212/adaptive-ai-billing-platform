@@ -17,3 +17,6 @@ uploads/
 test-results/
 playwright-report/
 .freebuff/
+
+# Local HTTP session captures
+cookies*.txt

@@ -1,6 +1,8 @@
 import React, { useRef } from 'react';
 import { Printer, X, Check } from 'lucide-react';
 import { defaultPrinter } from '../../hardware/ReceiptPrinter';
+import { useCurrencySymbol } from '../../utils/currency';
+import { useTaxSystem } from '../../utils/tax';
 
 interface ThermalReceiptModalProps {
   isOpen: boolean;
@@ -32,6 +34,8 @@ interface ThermalReceiptModalProps {
 }
 
 export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({ isOpen, onClose, receiptData }) => {
+  const currencySymbol = useCurrencySymbol();
+  const { label: taxLabel, taxIdLabel } = useTaxSystem();
   const receiptRef = useRef<HTMLDivElement>(null);
 
   if (!isOpen || !receiptData) return null;
@@ -60,7 +64,7 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({ isOpen
           <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
             <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 'bold', textTransform: 'uppercase' }}>{receiptData.storeName}</h2>
             {receiptData.storeAddress && <p style={{ margin: '0.2rem 0' }}>{receiptData.storeAddress}</p>}
-            {receiptData.gstin && <p style={{ margin: '0.2rem 0' }}>GSTIN: {receiptData.gstin}</p>}
+            {receiptData.gstin && <p style={{ margin: '0.2rem 0' }}>{taxIdLabel}: {receiptData.gstin}</p>}
             <p style={{ margin: '0.4rem 0', borderTop: '1px dashed #000', borderBottom: '1px dashed #000', padding: '0.3rem 0' }}>
               TAX INVOICE / RETAIL RECEIPT
             </p>
@@ -100,21 +104,21 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({ isOpen
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', borderTop: '1px solid #000', paddingTop: '0.5rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>Subtotal:</span>
-              <span>₹{receiptData.subtotal.toFixed(2)}</span>
+              <span>{currencySymbol}{receiptData.subtotal.toFixed(2)}</span>
             </div>
             {receiptData.discountTotal > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>Discount:</span>
-                <span>-₹{receiptData.discountTotal.toFixed(2)}</span>
+                <span>-{currencySymbol}{receiptData.discountTotal.toFixed(2)}</span>
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>Tax (GST):</span>
-              <span>₹{receiptData.taxTotal.toFixed(2)}</span>
+              <span>Tax ({taxLabel}):</span>
+              <span>{currencySymbol}{receiptData.taxTotal.toFixed(2)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', fontWeight: 'bold', borderTop: '1px dashed #000', borderBottom: '1px dashed #000', padding: '0.3rem 0', margin: '0.2rem 0' }}>
               <span>TOTAL DUE:</span>
-              <span>₹{receiptData.grandTotal.toFixed(2)}</span>
+              <span>{currencySymbol}{receiptData.grandTotal.toFixed(2)}</span>
             </div>
           </div>
 
@@ -123,18 +127,18 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({ isOpen
             {receiptData.payments.map((p, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>{p.method.toUpperCase()}:</span>
-                <span>₹{p.amount.toFixed(2)}</span>
+                <span>{currencySymbol}{p.amount.toFixed(2)}</span>
               </div>
             ))}
             {receiptData.amountTendered > 0 && (
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.25rem' }}>
                   <span>Amount Tendered:</span>
-                  <span>₹{receiptData.amountTendered.toFixed(2)}</span>
+                  <span>{currencySymbol}{receiptData.amountTendered.toFixed(2)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>Change Returned:</span>
-                  <span>₹{receiptData.changeGiven.toFixed(2)}</span>
+                  <span>{currencySymbol}{receiptData.changeGiven.toFixed(2)}</span>
                 </div>
               </>
             )}
@@ -146,7 +150,7 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({ isOpen
               {receiptData.loyaltyPointsRedeemed ? (
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>Points Redeemed:</span>
-                  <span>{receiptData.loyaltyPointsRedeemed} pts (-₹{receiptData.loyaltyPointsRedeemed.toFixed(2)})</span>
+                  <span>{receiptData.loyaltyPointsRedeemed} pts (-{currencySymbol}{receiptData.loyaltyPointsRedeemed.toFixed(2)})</span>
                 </div>
               ) : null}
               {receiptData.customerRemainingPoints !== undefined && (

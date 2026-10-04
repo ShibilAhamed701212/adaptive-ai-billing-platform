@@ -1,6 +1,8 @@
 import React from 'react';
 import { Invoice, InvoiceTemplate } from '@billing/shared';
 
+const TAX_ID_LABELS: Record<string, string> = { GST: 'GSTIN', VAT: 'VAT No.' };
+
 interface InvoiceDocumentProps {
   invoice: Invoice;
   template?: InvoiceTemplate | null;
@@ -15,23 +17,26 @@ interface InvoiceDocumentProps {
     country?: string;
   };
   organizationGstin?: string;
+  taxSystem?: string;
 }
 
 export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
   invoice,
   template,
-  organizationName = 'Adaptive Billing Corp',
-  organizationEmail = 'billing@adaptive.io',
-  organizationPhone = '+91 98765 43210',
-  organizationAddress = {
-    street: '100 Tech Park Avenue, Cyber City',
-    city: 'Bengaluru',
-    state: 'Karnataka',
-    postalCode: '560103',
-    country: 'India',
-  },
-  organizationGstin = '29AABCU9603R1ZM',
+  organizationName = '',
+  organizationEmail,
+  organizationPhone,
+  organizationAddress = {},
+  organizationGstin,
+  taxSystem = 'GST',
 }) => {
+  const isGst = taxSystem === 'GST';
+  const taxIdLabel = TAX_ID_LABELS[taxSystem] || 'Tax ID';
+  const cityLine = [organizationAddress.city, [organizationAddress.state, organizationAddress.postalCode].filter(Boolean).join(' ')]
+    .filter(Boolean)
+    .join(', ');
+  const addressLine = [organizationAddress.street, cityLine].filter(Boolean).join(', ');
+
   const layout = template?.layout || {
     showLogo: true,
     showGstin: true,
@@ -40,17 +45,11 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
     showPaymentTerms: true,
     showNotes: true,
     showTaxBreakdown: true,
-    showBankDetails: true,
+    showBankDetails: false,
     templateStyle: 'modern' as const,
     headerText: 'Tax Invoice',
     footerText: 'Thank you for your valued partnership!',
-    bankDetails: {
-      bankName: 'HDFC Bank Ltd',
-      accountName: 'Adaptive Billing Solutions Pvt Ltd',
-      accountNumber: '50200049281920',
-      ifscCode: 'HDFC0000240',
-      upiId: 'adaptivebilling@hdfcbank',
-    },
+    bankDetails: undefined,
   };
 
   const brandColors = template?.brandColors || {
@@ -64,7 +63,7 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
   const primaryColor = brandColors.primary || '#4f46e5';
 
   // Format currency
-  const fmt = (n: number) => `₹${(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const fmt = (n: number) => `${invoice.currencySymbol || '₹'}${(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   // POS Thermal Receipt Layout
   if (style === 'pos_thermal') {
@@ -84,8 +83,8 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
       >
         <div style={{ textAlign: 'center', borderBottom: '1px dashed #94a3b8', paddingBottom: '0.75rem', marginBottom: '0.75rem' }}>
           <h2 style={{ fontSize: '1.1rem', margin: 0, fontWeight: 700 }}>{organizationName}</h2>
-          <div style={{ fontSize: '0.75rem' }}>{organizationAddress.city}, {organizationAddress.state}</div>
-          {organizationGstin && <div style={{ fontSize: '0.7rem' }}>GSTIN: {organizationGstin}</div>}
+          {cityLine && <div style={{ fontSize: '0.75rem' }}>{cityLine}</div>}
+          {organizationGstin && <div style={{ fontSize: '0.7rem' }}>{taxIdLabel}: {organizationGstin}</div>}
           <div style={{ fontSize: '0.8rem', marginTop: '0.5rem', fontWeight: 600 }}>TAX INVOICE / RECEIPT</div>
           <div style={{ fontSize: '0.75rem' }}>#{invoice.invoiceNumber} • {invoice.issueDate}</div>
         </div>
@@ -171,8 +170,9 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
           <div>
             <h1 style={{ fontSize: '1.25rem', fontWeight: 300, margin: '0 0 0.5rem', color: primaryColor }}>{organizationName}</h1>
             <div style={{ fontSize: '0.85rem', color: '#666' }}>
-              {organizationAddress.street}<br/>
-              {organizationAddress.city}, {organizationAddress.state} {organizationAddress.postalCode}
+              {organizationAddress.street}
+              {organizationAddress.street && cityLine && <br/>}
+              {cityLine}
             </div>
           </div>
           <div style={{ textAlign: 'right' }}>
@@ -264,14 +264,16 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
               {organizationName.toUpperCase()}
             </h1>
             <p style={{ margin: '0.25rem 0', fontSize: '0.85rem', color: '#475569' }}>
-              {organizationAddress.street}, {organizationAddress.city}, {organizationAddress.state} - {organizationAddress.postalCode}
+              {addressLine}
             </p>
-            <p style={{ margin: 0, fontSize: '0.85rem', color: '#475569' }}>
-              Email: {organizationEmail} | Phone: {organizationPhone}
-            </p>
+            {(organizationEmail || organizationPhone) && (
+              <p style={{ margin: 0, fontSize: '0.85rem', color: '#475569' }}>
+                {[organizationEmail && `Email: ${organizationEmail}`, organizationPhone && `Phone: ${organizationPhone}`].filter(Boolean).join(' | ')}
+              </p>
+            )}
             {layout.showGstin && organizationGstin && (
               <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', fontWeight: 700 }}>
-                GSTIN: {organizationGstin}
+                {taxIdLabel}: {organizationGstin}
               </p>
             )}
           </div>
@@ -304,12 +306,15 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
             <div style={{ fontSize: '0.9rem', color: '#475569' }}>{invoice.customerSnapshot.companyName}</div>
           )}
           <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '0.2rem' }}>
-            {invoice.customerSnapshot?.billingAddress?.street}, {invoice.customerSnapshot?.billingAddress?.city},{' '}
-            {invoice.customerSnapshot?.billingAddress?.state} {invoice.customerSnapshot?.billingAddress?.postalCode}
+            {[
+              invoice.customerSnapshot?.billingAddress?.street,
+              invoice.customerSnapshot?.billingAddress?.city,
+              [invoice.customerSnapshot?.billingAddress?.state, invoice.customerSnapshot?.billingAddress?.postalCode].filter(Boolean).join(' '),
+            ].filter(Boolean).join(', ')}
           </div>
           {invoice.customerSnapshot?.gstinOrTaxId && (
             <div style={{ fontSize: '0.85rem', fontWeight: 600, marginTop: '0.2rem' }}>
-              GSTIN/Tax ID: {invoice.customerSnapshot.gstinOrTaxId}
+              {taxIdLabel}: {invoice.customerSnapshot.gstinOrTaxId}
             </div>
           )}
         </div>
@@ -447,17 +452,17 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
                 {organizationName}
               </h1>
               <p style={{ fontSize: '0.75rem', color: '#64748b', margin: 0 }}>
-                {organizationAddress.street}, {organizationAddress.city}, {organizationAddress.state} {organizationAddress.postalCode}
+                {addressLine}
               </p>
             </div>
           </div>
           <div style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', gap: '1rem', marginTop: '0.25rem' }}>
-            <span><strong>Email:</strong> {organizationEmail}</span>
-            <span><strong>Phone:</strong> {organizationPhone}</span>
+            {organizationEmail && <span><strong>Email:</strong> {organizationEmail}</span>}
+            {organizationPhone && <span><strong>Phone:</strong> {organizationPhone}</span>}
           </div>
           {layout.showGstin && organizationGstin && (
             <div style={{ fontSize: '0.75rem', color: primaryColor, fontWeight: 700, marginTop: '0.25rem' }}>
-              GSTIN: {organizationGstin}
+              {taxIdLabel}: {organizationGstin}
             </div>
           )}
         </div>
@@ -504,7 +509,7 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
           </div>
           {invoice.customerSnapshot?.gstinOrTaxId && (
             <div style={{ fontSize: '0.8rem', color: primaryColor, fontWeight: 700, marginTop: '0.35rem' }}>
-              GSTIN / PAN: {invoice.customerSnapshot.gstinOrTaxId}
+              {isGst ? 'GSTIN / PAN' : taxIdLabel}: {invoice.customerSnapshot.gstinOrTaxId}
             </div>
           )}
         </div>
@@ -518,10 +523,13 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
             <span style={{ color: '#64748b' }}>Payment Due Date:</span>
             <span style={{ fontWeight: 600, fontFamily: 'monospace', color: '#e11d48' }}>{invoice.dueDate}</span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-            <span style={{ color: '#64748b' }}>Place of Supply:</span>
-            <span style={{ fontWeight: 600 }}>{invoice.customerSnapshot?.billingAddress?.state || 'Local State'}</span>
-          </div>
+          {/* Place of supply is a GST concept (decides CGST/SGST vs IGST). */}
+          {isGst && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+              <span style={{ color: '#64748b' }}>Place of Supply:</span>
+              <span style={{ fontWeight: 600 }}>{invoice.customerSnapshot?.billingAddress?.state || 'Local State'}</span>
+            </div>
+          )}
         </div>
       </div>
 

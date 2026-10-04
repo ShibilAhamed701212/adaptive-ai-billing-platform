@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { apiRequest } from '../../api/client';
+import { apiRequest, fetchAllPages } from '../../api/client';
 import { Customer, Product, InvoiceCopilotDraft } from '@billing/shared';
 import { DynamicFieldRenderer } from '../../components/dynamic-forms/DynamicFieldRenderer';
 import {
@@ -11,6 +11,9 @@ import {
   Sparkles,
   Info,
 } from 'lucide-react';
+import { useCurrencySymbol } from '../../utils/currency';
+import { useTaxSystem } from '../../utils/tax';
+import { TaxRateSelect } from '../../components/common/TaxRateSelect';
 
 interface CreateInvoicePageProps {
   onNavigate: (path: string) => void;
@@ -21,6 +24,8 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
   onNavigate,
   copilotDraft,
 }) => {
+  const currencySymbol = useCurrencySymbol();
+  const { taxIdLabel, isGst, defaultRate } = useTaxSystem();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
 
@@ -48,7 +53,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
       quantity: 1,
       unitPrice: 0,
       discountAmount: 0,
-      taxRate: 0.18,
+      taxRate: defaultRate,
     },
   ]);
   const [invoiceDiscountAmount, setInvoiceDiscountAmount] = useState<number>(0);
@@ -68,8 +73,8 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
     async function loadData() {
       try {
         const [cRes, pRes, tRes] = await Promise.all([
-          apiRequest<Customer[]>('/customers'),
-          apiRequest<Product[]>('/products'),
+          fetchAllPages<Customer>('/customers'),
+          fetchAllPages<Product>('/products'),
           apiRequest<any[]>('/invoice-templates'),
         ]);
         if (cRes.success && cRes.data) setCustomers(cRes.data);
@@ -109,7 +114,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
             quantity: i.quantity,
             unitPrice: i.unitPrice,
             discountAmount: 0,
-            taxRate: i.taxRate !== undefined ? i.taxRate : 0.18,
+            taxRate: i.taxRate !== undefined ? i.taxRate : defaultRate,
           }))
         );
       }
@@ -181,7 +186,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
         quantity: 1,
         unitPrice: 0,
         discountAmount: 0,
-        taxRate: 0.18,
+        taxRate: defaultRate,
       },
     ]);
   };
@@ -241,15 +246,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
       const formData = new FormData();
       formData.append('file', file);
       
-      const res = await fetch('/api/v1/ai/ocr/upload', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: formData
-      });
-      
-      const data = await res.json();
+      const data = await apiRequest('/ai/ocr/upload', { method: 'POST', body: formData });
       if (data.success && data.data) {
         // Populate fields
         if (data.data.items && data.data.items.length > 0) {
@@ -333,7 +330,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
       )}
 
       {/* Main Studio Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2.2fr 1fr', gap: '1.5rem' }}>
+      <div className="stack-md" style={{ display: 'grid', gridTemplateColumns: '2.2fr 1fr', gap: '1.5rem' }}>
         {/* Left Column: Form Builder */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           {/* Customer & Date Selection */}
@@ -343,7 +340,9 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Sets destination tax jurisdiction</span>
             </div>
             <p className="section-lead">
-              Select the client account. The system automatically inspects their state and GSTIN to calculate appropriate CGST/SGST (intra-state) or IGST (inter-state) tax rates.
+              {isGst
+                ? 'Select the client account. The system automatically inspects their state and GSTIN to calculate appropriate CGST/SGST (intra-state) or IGST (inter-state) tax rates.'
+                : 'Select the client account to bill. Their billing details are snapshotted onto the invoice.'}
             </p>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
@@ -357,11 +356,11 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
                   <option value="">-- Choose Customer --</option>
                   {customers.map((c) => (
                     <option key={c._id} value={c._id}>
-                      {c.name} {c.companyName ? `(${c.companyName})` : ''} - {c.billingAddress?.state || 'India'}
+                      {c.name} {c.companyName ? `(${c.companyName})` : ''}{c.billingAddress?.state ? ` - ${c.billingAddress.state}` : ''}
                     </option>
                   ))}
                 </select>
-                <span className="element-desc">Auto-determines intra-state vs inter-state GST rules</span>
+                {isGst && <span className="element-desc">Auto-determines intra-state vs inter-state GST rules</span>}
               </div>
 
               <div className="form-group">
@@ -429,13 +428,13 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
                 }}
               >
                 <div>
-                  <strong>GSTIN/Tax ID:</strong> {selectedCustomer.gstinOrTaxId || 'Unregistered'} •{' '}
+                  <strong>{taxIdLabel}:</strong> {selectedCustomer.gstinOrTaxId || 'Unregistered'} •{' '}
                   <strong>State:</strong> {selectedCustomer.billingAddress?.state || 'N/A'}
                 </div>
                 <div>
                   <strong>Current Outstanding:</strong>{' '}
                   <span style={{ fontWeight: 700, color: 'var(--color-warning)', fontFamily: 'var(--font-mono)' }}>
-                    ₹{selectedCustomer.outstandingBalance.toLocaleString()}
+                    {currencySymbol}{selectedCustomer.outstandingBalance.toLocaleString()}
                   </span>
                 </div>
               </div>
@@ -458,6 +457,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
               {items.map((item, idx) => (
                 <div
                   key={idx}
+                  className="stack-sm"
                   style={{
                     background: '#f8fafc',
                     border: '1px solid var(--border-subtle)',
@@ -481,7 +481,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
                       <option value="">-- Custom Line Description --</option>
                       {products.map((p) => (
                         <option key={p._id} value={p._id}>
-                          {p.name} (₹{p.unitPrice})
+                          {p.name} ({currencySymbol}{p.unitPrice})
                         </option>
                       ))}
                     </select>
@@ -520,7 +520,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
 
                   {/* Unit Price */}
                   <div>
-                    <label className="form-label" style={{ fontSize: '0.75rem' }}>Rate (₹)</label>
+                    <label className="form-label" style={{ fontSize: '0.75rem' }}>Rate ({currencySymbol})</label>
                     <input
                       type="number"
                       className="form-input"
@@ -532,7 +532,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
 
                   {/* Line Discount */}
                   <div>
-                    <label className="form-label" style={{ fontSize: '0.75rem' }}>Discount (₹)</label>
+                    <label className="form-label" style={{ fontSize: '0.75rem' }}>Discount ({currencySymbol})</label>
                     <input
                       type="number"
                       className="form-input"
@@ -545,18 +545,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
                   {/* Tax Rate */}
                   <div>
                     <label className="form-label" style={{ fontSize: '0.75rem' }}>Tax %</label>
-                    <select
-                      className="form-select"
-                      value={item.taxRate}
-                      onChange={(e) => handleItemChange(idx, 'taxRate', parseFloat(e.target.value))}
-                    >
-                      <option value="0">0% (Exempt)</option>
-                      <option value="0.05">5% GST</option>
-                      <option value="0.12">12% GST</option>
-                      <option value="0.18">18% GST</option>
-                      <option value="0.28">28% GST</option>
-                    </select>
-                    <span className="element-desc">GST / VAT slab</span>
+                    <TaxRateSelect className="form-select" value={item.taxRate} onChange={(rate) => handleItemChange(idx, 'taxRate', rate)} />
                   </div>
 
                   {/* Delete row */}
@@ -591,7 +580,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
             <h3 style={{ fontSize: '1.05rem', margin: '0 0 0.25rem' }}>3. Terms & Client Communication</h3>
             <p className="section-lead">Printed on the bottom of the official tax invoice.</p>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div className="stack-sm" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div className="form-group">
                 <label className="form-label">Client Notes & Instructions</label>
                 <textarea
@@ -641,19 +630,19 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>Items Subtotal:</span>
                 <span style={{ fontWeight: 600, fontFamily: 'var(--font-mono)' }}>
-                  ₹{(calculationPreview?.totals?.rawSubtotal || 0).toLocaleString()}
+                  {currencySymbol}{(calculationPreview?.totals?.rawSubtotal || 0).toLocaleString()}
                 </span>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>Item Discounts:</span>
                 <span style={{ color: 'var(--color-warning)', fontWeight: 600, fontFamily: 'var(--font-mono)' }}>
-                  -₹{(calculationPreview?.totals?.itemDiscountTotal || 0).toLocaleString()}
+                  -{currencySymbol}{(calculationPreview?.totals?.itemDiscountTotal || 0).toLocaleString()}
                 </span>
               </div>
 
               <div className="form-group" style={{ margin: '0.5rem 0' }}>
-                <label className="form-label" style={{ fontSize: '0.75rem' }}>Invoice-Level Discount (₹)</label>
+                <label className="form-label" style={{ fontSize: '0.75rem' }}>Invoice-Level Discount ({currencySymbol})</label>
                 <input
                   type="number"
                   className="form-input"
@@ -666,7 +655,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
               <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '0.5rem', borderTop: '1px dashed var(--border-subtle)' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>Taxable Value:</span>
                 <span style={{ fontWeight: 600, fontFamily: 'var(--font-mono)' }}>
-                  ₹{(calculationPreview?.totals?.taxableAmount || 0).toLocaleString()}
+                  {currencySymbol}{(calculationPreview?.totals?.taxableAmount || 0).toLocaleString()}
                 </span>
               </div>
 
@@ -674,14 +663,14 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
               {calculationPreview?.totals?.taxBreakdown?.map((tax: any, tIdx: number) => (
                 <div key={tIdx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
                   <span>{tax.taxType} ({tax.rate * 100}%):</span>
-                  <span style={{ fontFamily: 'var(--font-mono)' }}>₹{tax.taxAmount.toLocaleString()}</span>
+                  <span style={{ fontFamily: 'var(--font-mono)' }}>{currencySymbol}{tax.taxAmount.toLocaleString()}</span>
                 </div>
               ))}
 
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>Total Tax Amount:</span>
                 <span style={{ fontWeight: 600, fontFamily: 'var(--font-mono)' }}>
-                  ₹{(calculationPreview?.totals?.taxTotal || 0).toLocaleString()}
+                  {currencySymbol}{(calculationPreview?.totals?.taxTotal || 0).toLocaleString()}
                 </span>
               </div>
 
@@ -698,7 +687,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
               >
                 <span style={{ fontSize: '1rem', fontWeight: 700 }}>Grand Total:</span>
                 <span style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--accent-primary)', fontFamily: 'var(--font-mono)' }}>
-                  ₹{(calculationPreview?.totals?.grandTotal || 0).toLocaleString()}
+                  {currencySymbol}{(calculationPreview?.totals?.grandTotal || 0).toLocaleString()}
                 </span>
               </div>
             </div>

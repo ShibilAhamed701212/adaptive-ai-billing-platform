@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Play, Square, DollarSign, Clock, FileText, AlertCircle, RefreshCw } from 'lucide-react';
 import { apiRequest } from '../../api/client';
+import { useCurrencySymbol } from '../../utils/currency';
 
 export const ShiftsPage: React.FC = () => {
+  const currencySymbol = useCurrencySymbol();
   const [currentShift, setCurrentShift] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   
@@ -145,24 +147,24 @@ export const ShiftsPage: React.FC = () => {
               </div>
               <div className="flex justify-between py-2 border-b">
                 <span className="text-gray-600">Opening Float</span>
-                <span className="font-medium font-mono">₹{currentShift.openingCash?.toLocaleString()}</span>
+                <span className="font-medium font-mono">{currencySymbol}{currentShift.openingCash?.toLocaleString()}</span>
               </div>
               <div className="flex justify-between py-2 border-b">
                 <span className="text-gray-600">Cash Sales</span>
-                <span className="font-medium font-mono text-green-600">+₹{(currentShift.liveMetrics?.cashSales || 0).toLocaleString()}</span>
+                <span className="font-medium font-mono text-green-600">+{currencySymbol}{(currentShift.liveMetrics?.cashSales || 0).toLocaleString()}</span>
               </div>
               <div className="flex justify-between py-2 border-b">
                 <span className="text-gray-600">Other Sales (UPI/Card)</span>
-                <span className="font-medium font-mono">₹{((currentShift.liveMetrics?.cardSales || 0) + (currentShift.liveMetrics?.upiSales || 0)).toLocaleString()}</span>
+                <span className="font-medium font-mono">{currencySymbol}{((currentShift.liveMetrics?.cardSales || 0) + (currentShift.liveMetrics?.upiSales || 0)).toLocaleString()}</span>
               </div>
               <div className="flex justify-between py-2 border-b">
                 <span className="text-gray-600">Cash Expenses</span>
-                <span className="font-medium font-mono text-red-600">-₹{(currentShift.liveMetrics?.expenses || 0).toLocaleString()}</span>
+                <span className="font-medium font-mono text-red-600">-{currencySymbol}{(currentShift.liveMetrics?.expenses || 0).toLocaleString()}</span>
               </div>
               <div className="flex justify-between py-3 border-t-2 border-indigo-200 bg-indigo-50/50 px-2 rounded">
                 <span className="font-semibold text-gray-900">Expected Cash in Drawer</span>
                 <span className="font-bold font-mono text-indigo-700 text-lg">
-                  ₹{(currentShift.liveMetrics?.expectedCash ?? currentShift.openingCash)?.toLocaleString()}
+                  {currencySymbol}{(currentShift.liveMetrics?.expectedCash ?? currentShift.openingCash)?.toLocaleString()}
                 </span>
               </div>
               {currentShift.notes && (
@@ -184,7 +186,7 @@ export const ShiftsPage: React.FC = () => {
                 <div className="flex justify-between items-center mb-1">
                   <label className="block text-sm font-medium text-gray-700">Counted Cash in Drawer *</label>
                   <span className="text-xs text-gray-500">
-                    Expected: ₹{(currentShift.liveMetrics?.expectedCash ?? currentShift.openingCash)?.toLocaleString()}
+                    Expected: {currencySymbol}{(currentShift.liveMetrics?.expectedCash ?? currentShift.openingCash)?.toLocaleString()}
                   </span>
                 </div>
                 <div className="relative">
@@ -219,7 +221,7 @@ export const ShiftsPage: React.FC = () => {
                       color: Number(actualCash) - (currentShift.liveMetrics?.expectedCash ?? currentShift.openingCash) === 0 ? '#16a34a' : '#d97706'
                     }}>
                       {Number(actualCash) - (currentShift.liveMetrics?.expectedCash ?? currentShift.openingCash) >= 0 ? '+' : ''}
-                      ₹{(Number(actualCash) - (currentShift.liveMetrics?.expectedCash ?? currentShift.openingCash)).toFixed(2)}
+                      {currencySymbol}{(Number(actualCash) - (currentShift.liveMetrics?.expectedCash ?? currentShift.openingCash)).toFixed(2)}
                     </span>
                   </div>
                 </div>

@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Package, AlertTriangle, Plus, Activity, RefreshCw, Hash, FileText, DollarSign, TrendingUp, Archive } from 'lucide-react';
-import { apiRequest } from '../../api/client';
+import { apiRequest, fetchAllPages } from '../../api/client';
+import { useCurrencySymbol } from '../../utils/currency';
 
 export const InventoryPage: React.FC = () => {
+  const currencySymbol = useCurrencySymbol();
   const [movements, setMovements] = useState<any[]>([]);
   const [lowStock, setLowStock] = useState<any[]>([]);
   const [valuation, setValuation] = useState<{ totalProducts: number; totalUnits: number; totalCostValuation: number; totalRetailValuation: number; estimatedMargin: number } | null>(null);
@@ -23,7 +25,7 @@ export const InventoryPage: React.FC = () => {
         apiRequest('/inventory/movements'),
         apiRequest('/inventory/low-stock'),
         apiRequest('/inventory/valuation'),
-        apiRequest('/products?limit=150'),
+        fetchAllPages('/products'),
       ]);
       setMovements(movementsRes.data || []);
       setLowStock(lowStockRes.data || []);
@@ -91,17 +93,17 @@ export const InventoryPage: React.FC = () => {
           </div>
           <div className="glass-panel" style={{ padding: '1.25rem' }}>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Cost Valuation</div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '0.25rem', color: 'var(--accent-primary)' }}>₹{valuation.totalCostValuation.toLocaleString()}</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '0.25rem', color: 'var(--accent-primary)' }}>{currencySymbol}{valuation.totalCostValuation.toLocaleString()}</div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Invested inventory capital</div>
           </div>
           <div className="glass-panel" style={{ padding: '1.25rem' }}>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Retail Potential Value</div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '0.25rem', color: 'var(--color-success)' }}>₹{valuation.totalRetailValuation.toLocaleString()}</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '0.25rem', color: 'var(--color-success)' }}>{currencySymbol}{valuation.totalRetailValuation.toLocaleString()}</div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Gross revenue potential</div>
           </div>
           <div className="glass-panel" style={{ padding: '1.25rem' }}>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Estimated Margin</div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '0.25rem' }}>₹{valuation.estimatedMargin.toLocaleString()}</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '0.25rem' }}>{currencySymbol}{valuation.estimatedMargin.toLocaleString()}</div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Projected gross profit</div>
           </div>
         </div>

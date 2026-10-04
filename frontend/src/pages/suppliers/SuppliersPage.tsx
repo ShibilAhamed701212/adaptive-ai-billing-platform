@@ -1,8 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { apiRequest } from '../../api/client';
+import { apiRequest, fetchAllPages } from '../../api/client';
 import { Plus, Search, X, CheckCircle2, Truck } from 'lucide-react';
+import { useCurrencySymbol } from '../../utils/currency';
+import { useTaxSystem } from '../../utils/tax';
 
 export const SuppliersPage: React.FC = () => {
+  const currencySymbol = useCurrencySymbol();
+  const { taxIdLabel } = useTaxSystem();
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -23,9 +27,9 @@ export const SuppliersPage: React.FC = () => {
 
   const fetchSuppliers = async () => {
     setIsLoading(true);
-    const res = await apiRequest('/suppliers');
+    const res = await fetchAllPages('/suppliers');
     if (res.success) {
-      setSuppliers(res.data);
+      setSuppliers(res.data ?? []);
     }
     setIsLoading(false);
   };
@@ -73,7 +77,7 @@ export const SuppliersPage: React.FC = () => {
             type="text"
             className="form-input"
             style={{ paddingLeft: '2.25rem' }}
-            placeholder="Search by name, email, or GSTIN..."
+            placeholder={`Search by name, email, or ${taxIdLabel}...`}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -87,7 +91,7 @@ export const SuppliersPage: React.FC = () => {
               <tr>
                 <th>Name</th>
                 <th>Contact</th>
-                <th>GSTIN</th>
+                <th>{taxIdLabel}</th>
                 <th>Outstanding Balance</th>
                 <th>Total Purchases</th>
               </tr>
@@ -107,9 +111,9 @@ export const SuppliersPage: React.FC = () => {
                     </td>
                     <td>{s.gstin || '-'}</td>
                     <td style={{ color: s.outstandingBalance > 0 ? 'var(--color-danger)' : 'inherit' }}>
-                      ₹{(s.outstandingBalance || 0).toFixed(2)}
+                      {currencySymbol}{(s.outstandingBalance || 0).toFixed(2)}
                     </td>
-                    <td>₹{(s.totalPurchases || 0).toFixed(2)}</td>
+                    <td>{currencySymbol}{(s.totalPurchases || 0).toFixed(2)}</td>
                   </tr>
                 ))
               )}
@@ -146,7 +150,7 @@ export const SuppliersPage: React.FC = () => {
                 </div>
               </div>
               <div className="form-group">
-                <label className="form-label">GSTIN / Tax ID</label>
+                <label className="form-label">{taxIdLabel}</label>
                 <input type="text" className="form-input" value={gstin} onChange={e => setGstin(e.target.value)} />
               </div>
               <div className="form-group">

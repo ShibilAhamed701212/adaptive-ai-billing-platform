@@ -103,7 +103,9 @@ async function buildSessionPayload(user: any, activeOrgId: string) {
       _id: m._id,
       userId: m.userId,
       organizationId: m.organizationId?._id || m.organizationId,
-      organization: m.organizationId?._id
+      organization: m.status === 'invited' && m.organizationId?._id
+        ? { _id: m.organizationId._id, name: m.organizationId.name }
+        : m.organizationId?._id
         ? {
             _id: m.organizationId._id,
             name: m.organizationId.name,
@@ -256,9 +258,10 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
 
     await ensureMembership(user);
 
+    // Pending invitations don't grant access; only sign into an organization the user is active in.
     const memberships = await MembershipModel.find({
       userId: user._id,
-      status: { $ne: 'disabled' },
+      status: 'active',
     });
 
     // Prefer the user's home organization, otherwise the first active membership.

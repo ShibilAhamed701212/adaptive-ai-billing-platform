@@ -14,7 +14,7 @@ export async function listCreditNotes(req: Request, res: Response, next: NextFun
     const query: any = { organizationId: new mongoose.Types.ObjectId(orgId) };
     if (originalInvoiceId) query.originalInvoiceId = new mongoose.Types.ObjectId(String(originalInvoiceId));
     if (customerId) query.customerId = new mongoose.Types.ObjectId(String(customerId));
-    if (status) query.status = status;
+    if (status) query.status = String(status);
 
     const notes = await CreditNoteModel.find(query).sort({ createdAt: -1 });
     res.json({ success: true, data: notes });

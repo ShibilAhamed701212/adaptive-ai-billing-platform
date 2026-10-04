@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { User, Organization, Membership } from '@billing/shared';
-import { apiRequest } from '../api/client';
+import { apiRequest, UNAUTHORIZED_EVENT } from '../api/client';
 
 interface CreateOrganizationPayload {
   name: string;
@@ -26,19 +26,11 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Legacy web-storage keys from before the HTTP-only cookie migration; cleared on logout.
 const TOKEN_KEY = 'billing_auth_token';
 const USER_KEY = 'billing_user';
 const ORG_KEY = 'billing_org';
 const MEMBERSHIPS_KEY = 'billing_memberships';
-
-function readJSON<T>(key: string, fallback: T): T {
-  try {
-    const cached = localStorage.getItem(key);
-    return cached ? (JSON.parse(cached) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [token, setToken] = useState<string | null>(null);
@@ -144,6 +136,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     refreshProfile();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Session cookie expired or was revoked mid-session: drop to the login screen.
+  useEffect(() => {
+    window.addEventListener(UNAUTHORIZED_EVENT, clearAuthState);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, clearAuthState);
+  }, [clearAuthState]);
 
   return (
     <AuthContext.Provider

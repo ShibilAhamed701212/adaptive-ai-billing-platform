@@ -2,8 +2,9 @@ import { MongoMemoryServer } from 'mongodb-memory-server';
 import mongoose from 'mongoose';
 import '../core/tenancy/tenant.middleware';
 import { register, login } from '../modules/auth/auth.controller';
-import { createOrganization, switchOrganization } from '../modules/organizations/organization.controller';
+import { createOrganization, switchOrganization, acceptInvitation } from '../modules/organizations/organization.controller';
 import { listCustomers } from '../modules/customers/customer.controller';
+import { createUser, updateUser } from '../modules/users/user.controller';
 import { createRecurringProfile, updateRecurringProfile } from '../modules/recurring/recurring.controller';
 import { UserModel } from '../models/User.model';
 import { MembershipModel } from '../models/Membership.model';
@@ -144,6 +145,45 @@ async function run() {
       noop
     );
     check('Recurring profile paused', res.statusCode === 200 && res.data?.data?.status === 'paused');
+
+    // 10. Another tenant's admin cannot take over a shared account by resetting its password
+    res = mockRes();
+    await register(
+      { body: { name: 'Mallory', email: 'mallory@evil.test', password: 'password123', organizationName: 'Mallory Co', businessType: 'general' } } as any,
+      res,
+      noop
+    );
+    const malloryTenant = { userId: String(res.data?.data?.user?._id), organizationId: String(res.data?.data?.organization?._id), role: 'admin', email: 'mallory@evil.test' };
+
+    res = mockRes();
+    await createUser({ tenant: malloryTenant, body: { name: 'Ada', email: 'ada@retail.test', role: 'viewer' } } as any, res, noop);
+    check('Existing account gets a pending invitation, not access', res.statusCode === 201 && res.data?.data?.status === 'invited');
+    check('Invitation response does not leak the account name', res.data?.data?.name === 'ada@retail.test');
+
+    res = mockRes();
+    await updateUser({ tenant: malloryTenant, params: { id: userAId }, body: { password: 'hijacked123' } } as any, res, noop);
+    check('Foreign admin cannot reset a shared account password', res.statusCode === 403);
+
+    res = mockRes();
+    await updateUser({ tenant: malloryTenant, params: { id: userAId }, body: { isActive: true } } as any, res, noop);
+    check('Inviting admin cannot force-activate a pending invitation', res.statusCode === 409);
+
+    res = mockRes();
+    await login({ body: { email: 'ada@retail.test', password: 'password123' } } as any, res, noop);
+    check('Shared account password unchanged', res.statusCode === 200);
+    check('Login never lands in a pending-invitation org', String(res.data?.data?.organization?._id) !== malloryTenant.organizationId);
+    const invite = (res.data?.data?.memberships || []).find((m: any) => m.status === 'invited');
+    check('Invitee sees only the inviting org name', Boolean(invite) && invite.organization?.name === 'Mallory Co' && !invite.organization?.settings);
+
+    res = mockRes();
+    await acceptInvitation({ tenant: { userId: userAId, organizationId: String(orgAId), email: 'ada@retail.test' }, params: { membershipId: String(invite?._id) } } as any, res, noop);
+    check('Invitee can accept the invitation', res.statusCode === 200 && (res.data?.data || []).some((m: any) => String(m._id) === String(invite?._id) && m.status === 'active'));
+
+    res = mockRes();
+    await createUser({ tenant: malloryTenant, body: { name: 'Staff', email: 'staff@evil.test', password: 'password123', role: 'sales' } } as any, res, noop);
+    res = mockRes();
+    await updateUser({ tenant: malloryTenant, params: { id: String((await UserModel.findOne({ email: 'staff@evil.test' }))!._id) }, body: { password: 'newpassword1' } } as any, res, noop);
+    check('Admin can reset password of an org-exclusive account', res.statusCode === 200);
   } catch (err) {
     failed += 1;
     console.error('❌ Unexpected test error:', err);

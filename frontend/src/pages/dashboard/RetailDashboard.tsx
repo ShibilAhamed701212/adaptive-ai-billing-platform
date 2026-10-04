@@ -2,6 +2,7 @@
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest } from '../../api/client';
 import { Package, TrendingUp, Users, ShoppingCart, Activity } from 'lucide-react';
+import { formatMoney } from '../../utils/currency';
 
 interface RetailDashboardProps {
   onNavigate: (path: string) => void;
@@ -11,6 +12,7 @@ export const RetailDashboard: React.FC<RetailDashboardProps> = ({ onNavigate }) 
   const { organization, user } = useAuth();
   const [data, setData] = useState<any>(null);
   const [topProducts, setTopProducts] = useState<any[]>([]);
+  const symbol = organization?.settings?.currencySymbol || '₹';
   
   useEffect(() => {
     apiRequest('/reports/dashboard-summary').then(res => {
@@ -37,7 +39,7 @@ export const RetailDashboard: React.FC<RetailDashboardProps> = ({ onNavigate }) 
             <span className="kpi-title">Gross Sales</span>
             <TrendingUp size={18} color="var(--accent-primary)" />
           </div>
-          <div className="kpi-value">{organization?.settings?.currencySymbol || 'â‚¹'}{(data?.grossSales || 0).toLocaleString()}</div>
+          <div className="kpi-value">{symbol}{(data?.grossSales || 0).toLocaleString()}</div>
           <p className="kpi-desc">Total volume</p>
         </div>
 
@@ -55,7 +57,7 @@ export const RetailDashboard: React.FC<RetailDashboardProps> = ({ onNavigate }) 
             <span className="kpi-title">Net Profit</span>
             <Package size={18} color="var(--color-success)" />
           </div>
-          <div className="kpi-value">{organization?.settings?.currencySymbol || 'â‚¹'}{(data?.netProfit || 0).toLocaleString()}</div>
+          <div className="kpi-value">{symbol}{(data?.netProfit || 0).toLocaleString()}</div>
           <p className="kpi-desc">Gross margin {data?.grossMarginPercent || 0}%</p>
         </div>
 
@@ -64,7 +66,7 @@ export const RetailDashboard: React.FC<RetailDashboardProps> = ({ onNavigate }) 
             <span className="kpi-title">Total Refunds</span>
             <Users size={18} color="var(--color-danger)" />
           </div>
-          <div className="kpi-value" style={{ color: 'var(--color-danger)' }}>{organization?.settings?.currencySymbol || 'â‚¹'}{(data?.totalRefunds || 0).toLocaleString()}</div>
+          <div className="kpi-value" style={{ color: 'var(--color-danger)' }}>{symbol}{(data?.totalRefunds || 0).toLocaleString()}</div>
           <p className="kpi-desc">Value of returned items</p>
         </div>
       </div>
@@ -101,7 +103,7 @@ export const RetailDashboard: React.FC<RetailDashboardProps> = ({ onNavigate }) 
                     <td style={{ color: 'var(--text-muted)' }}>{p.sku || '-'}</td>
                     <td style={{ textAlign: 'right', fontWeight: 600 }}>{p.unitsSold}</td>
                     <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--color-success)' }}>
-                      {organization?.settings?.currencySymbol || 'â‚¹'}{p.totalRevenue.toLocaleString()}
+                      {symbol}{p.totalRevenue.toLocaleString()}
                     </td>
                   </tr>
                 ))

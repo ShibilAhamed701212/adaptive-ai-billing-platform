@@ -4,6 +4,7 @@ import { ShiftModel } from '../../models/Shift.model';
 import { InvoiceModel } from '../../models/Invoice.model';
 import { ExpenseModel } from '../../models/Expense.model';
 import { logAuditEvent } from '../../core/audit/audit.service';
+import { parsePagination } from '../../core/utils/query';
 
 export async function getCurrentShift(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -222,13 +223,13 @@ export async function listShifts(req: Request, res: Response, next: NextFunction
     const orgId = req.tenant!.organizationId;
     const { page = 1, limit = 50 } = req.query;
 
-    const skip = (Number(page) - 1) * Number(limit);
+    const { page: pageNum, limit: pageSize, skip } = parsePagination(page, limit);
     const [shifts, total] = await Promise.all([
       ShiftModel.find({ organizationId: new mongoose.Types.ObjectId(orgId) })
         .populate('userId', 'name email')
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(Number(limit)),
+        .limit(pageSize),
       ShiftModel.countDocuments({ organizationId: new mongoose.Types.ObjectId(orgId) }),
     ]);
 
@@ -236,10 +237,10 @@ export async function listShifts(req: Request, res: Response, next: NextFunction
       success: true,
       data: shifts,
       pagination: {
-        page: Number(page),
-        limit: Number(limit),
+        page: pageNum,
+        limit: pageSize,
         total,
-        totalPages: Math.ceil(total / Number(limit)),
+        totalPages: Math.ceil(total / pageSize),
       },
     });
   } catch (err) {

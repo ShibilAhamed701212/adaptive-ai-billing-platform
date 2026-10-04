@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { ExpenseModel } from '../../models/Expense.model';
 import { ShiftModel } from '../../models/Shift.model';
 import { logAuditEvent } from '../../core/audit/audit.service';
+import { parsePagination } from '../../core/utils/query';
 
 export async function listExpenses(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -10,14 +11,14 @@ export async function listExpenses(req: Request, res: Response, next: NextFuncti
     const { category, startDate, endDate, page = 1, limit = 50 } = req.query;
 
     const query: any = { organizationId: new mongoose.Types.ObjectId(orgId) };
-    if (category) query.category = category;
+    if (category) query.category = String(category);
     if (startDate && endDate) {
       query.date = { $gte: String(startDate), $lte: String(endDate) };
     }
 
-    const skip = (Number(page) - 1) * Number(limit);
+    const { page: pageNum, limit: pageSize, skip } = parsePagination(page, limit);
     const [expenses, total] = await Promise.all([
-      ExpenseModel.find(query).populate('userId', 'name email').sort({ date: -1 }).skip(skip).limit(Number(limit)),
+      ExpenseModel.find(query).populate('userId', 'name email').sort({ date: -1 }).skip(skip).limit(pageSize),
       ExpenseModel.countDocuments(query),
     ]);
 
@@ -25,10 +26,10 @@ export async function listExpenses(req: Request, res: Response, next: NextFuncti
       success: true,
       data: expenses,
       pagination: {
-        page: Number(page),
-        limit: Number(limit),
+        page: pageNum,
+        limit: pageSize,
         total,
-        totalPages: Math.ceil(total / Number(limit)),
+        totalPages: Math.ceil(total / pageSize),
       },
     });
   } catch (err) {

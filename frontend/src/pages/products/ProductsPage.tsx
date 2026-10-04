@@ -1,11 +1,17 @@
-import React, { useEffect, useState } from 'react';
-import { apiRequest } from '../../api/client';
+import React, { useEffect, useRef, useState } from 'react';
+import { apiRequest, fetchAllPages } from '../../api/client';
+import { useDebouncedValue } from '../../utils/useDebouncedValue';
 import { Product } from '@billing/shared';
 import { DynamicFieldRenderer } from '../../components/dynamic-forms/DynamicFieldRenderer';
 import { Plus, Package, Search, X, CheckCircle2, Barcode, Trash2, Edit2 } from 'lucide-react';
 import { BarcodeLabelModal } from '../../components/products/BarcodeLabelModal';
+import { useCurrencySymbol } from '../../utils/currency';
+import { useTaxSystem, formatTaxRate } from '../../utils/tax';
+import { TaxRateSelect } from '../../components/common/TaxRateSelect';
 
 export const ProductsPage: React.FC = () => {
+  const currencySymbol = useCurrencySymbol();
+  const { label: taxLabel, defaultRate } = useTaxSystem();
   const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
@@ -20,7 +26,7 @@ export const ProductsPage: React.FC = () => {
   const [type, setType] = useState<'goods' | 'service' | 'subscription' | 'usage'>('goods');
   const [unit, setUnit] = useState<string>('');
   const [unitPrice, setUnitPrice] = useState<number>(0);
-  const [taxRate, setTaxRate] = useState<number>(0.18);
+  const [taxRate, setTaxRate] = useState<number>(defaultRate);
   const [hsnSacCode, setHsnSacCode] = useState<string>('998313');
   const [stockQuantity, setStockQuantity] = useState<number>(0);
   const [expiryDate, setExpiryDate] = useState<string>('');
@@ -28,23 +34,25 @@ export const ProductsPage: React.FC = () => {
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
+  const debouncedSearch = useDebouncedValue(search);
+  const requestSeq = useRef(0);
+
   const fetchProducts = async () => {
+    // Ignore responses that arrive after a newer search was issued.
+    const seq = ++requestSeq.current;
     setLoading(true);
-    try {
-      const res = await apiRequest<Product[]>(`/products?search=${encodeURIComponent(search)}`);
-      if (res.success && res.data) {
-        setProducts(res.data);
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
+    const res = await fetchAllPages<Product>(`/products?search=${encodeURIComponent(debouncedSearch)}`);
+    if (seq !== requestSeq.current) return;
+    if (res.success && res.data) {
+      setProducts(res.data);
     }
+    setLoading(false);
   };
 
   useEffect(() => {
     fetchProducts();
-  }, [search]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch]);
 
   const handleCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -135,7 +143,7 @@ export const ProductsPage: React.FC = () => {
                 <th>Category</th>
                 <th>Unit Type</th>
                 <th>Stock / Qty</th>
-                <th>Base Unit Price (₹)</th>
+                <th>Base Unit Price ({currencySymbol})</th>
                 <th>Default Tax Slab</th>
                 <th>HSN / SAC</th>
                 <th style={{ textAlign: 'right' }}>Actions</th>
@@ -181,9 +189,9 @@ export const ProductsPage: React.FC = () => {
                       )}
                     </td>
                     <td style={{ fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
-                      ₹{p.unitPrice.toLocaleString()}
+                      {currencySymbol}{p.unitPrice.toLocaleString()}
                     </td>
-                    <td>{p.taxRate * 100}% GST</td>
+                    <td>{formatTaxRate(p.taxRate || 0)} {taxLabel}</td>
                     <td style={{ fontSize: '0.8125rem', fontFamily: 'var(--font-mono)' }}>{p.hsnSacCode || '-'}</td>
                     <td style={{ textAlign: 'right' }}>
                       <button
@@ -258,7 +266,7 @@ export const ProductsPage: React.FC = () => {
             )}
 
             <form onSubmit={handleCreateProduct} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '1rem' }}>
+              <div className="stack-sm" style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '1rem' }}>
                 <div className="form-group">
                   <label className="form-label">Item / Service Name *</label>
                   <input
@@ -297,7 +305,7 @@ export const ProductsPage: React.FC = () => {
                 <span className="element-desc">Pre-filled on invoice line items</span>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+              <div className="stack-sm" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
                 <div className="form-group">
                   <label className="form-label">Type</label>
                   <select className="form-select" value={type} onChange={(e) => setType(e.target.value as any)}>
@@ -322,7 +330,7 @@ export const ProductsPage: React.FC = () => {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">Base Rate (₹) *</label>
+                  <label className="form-label">Base Rate ({currencySymbol}) *</label>
                   <input
                     type="number"
                     required
@@ -334,16 +342,10 @@ export const ProductsPage: React.FC = () => {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <div className="stack-sm" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div className="form-group">
                   <label className="form-label">Default Tax Slab</label>
-                  <select className="form-select" value={taxRate} onChange={(e) => setTaxRate(parseFloat(e.target.value))}>
-                    <option value="0">0% (Exempt)</option>
-                    <option value="0.05">5% GST</option>
-                    <option value="0.12">12% GST</option>
-                    <option value="0.18">18% GST</option>
-                    <option value="0.28">28% GST</option>
-                  </select>
+                  <TaxRateSelect className="form-select" value={taxRate} onChange={setTaxRate} />
                   <span className="element-desc">Standard statutory tax</span>
                 </div>
 
@@ -361,7 +363,7 @@ export const ProductsPage: React.FC = () => {
               </div>
 
               {type === 'goods' && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div className="stack-sm" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                   <div className="form-group">
                     <label className="form-label">Opening Stock Quantity</label>
                     <input

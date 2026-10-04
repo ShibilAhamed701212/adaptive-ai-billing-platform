@@ -52,10 +52,60 @@ async function loadMemberships(userId: string) {
     _id: m._id,
     userId: m.userId,
     organizationId: m.organizationId?._id || m.organizationId,
-    organization: serializeOrg(m.organizationId),
+    // An invitee only sees who invited them until they accept.
+    organization: m.status === 'invited' && m.organizationId?._id
+      ? { _id: m.organizationId._id, name: m.organizationId.name }
+      : serializeOrg(m.organizationId),
     role: m.role,
     status: m.status,
   }));
+}
+
+async function findOwnInvitation(req: Request) {
+  if (!mongoose.isValidObjectId(req.params.membershipId)) return null;
+  return MembershipModel.findOne({
+    _id: req.params.membershipId,
+    userId: new mongoose.Types.ObjectId(req.tenant!.userId),
+    status: 'invited',
+  });
+}
+
+export async function acceptInvitation(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const membership = await findOwnInvitation(req);
+    if (!membership) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Invitation not found' } });
+      return;
+    }
+    membership.status = 'active';
+    await membership.save();
+    await logAuditEvent({
+      organizationId: String(membership.organizationId),
+      userId: req.tenant!.userId,
+      userEmail: req.tenant!.email,
+      action: 'ACCEPT_INVITATION',
+      entityType: 'Membership',
+      entityId: String(membership._id),
+      details: { role: membership.role },
+    });
+    res.json({ success: true, data: await loadMemberships(req.tenant!.userId) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function declineInvitation(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const membership = await findOwnInvitation(req);
+    if (!membership) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Invitation not found' } });
+      return;
+    }
+    await membership.deleteOne();
+    res.json({ success: true, data: await loadMemberships(req.tenant!.userId) });
+  } catch (err) {
+    next(err);
+  }
 }
 
 export async function getOrganizationProfile(req: Request, res: Response, next: NextFunction): Promise<void> {

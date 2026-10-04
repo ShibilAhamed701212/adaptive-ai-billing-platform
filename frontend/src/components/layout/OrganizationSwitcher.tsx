@@ -1,17 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { apiRequest } from '../../api/client';
 import { useToast } from '../common/Toast';
-import { Building2, ChevronDown, Check, Plus, Loader2 } from 'lucide-react';
+import { Building2, ChevronDown, Check, Plus, Loader2, Mail, X } from 'lucide-react';
 
 interface OrganizationSwitcherProps {
   onNavigate: (path: string) => void;
 }
 
 export const OrganizationSwitcher: React.FC<OrganizationSwitcherProps> = ({ onNavigate }) => {
-  const { organization, memberships, switchOrganization } = useAuth();
+  const { organization, memberships, switchOrganization, refreshProfile } = useAuth();
   const { show } = useToast();
   const [open, setOpen] = useState(false);
   const [switchingTo, setSwitchingTo] = useState<string | null>(null);
+  const [respondingTo, setRespondingTo] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -38,12 +40,24 @@ export const OrganizationSwitcher: React.FC<OrganizationSwitcherProps> = ({ onNa
     }
   };
 
-  // Fall back to a single-item view if memberships were not returned.
-  const options = memberships.length > 0 ? memberships : [];
+  const handleInvitation = async (membershipId: string, orgName: string, action: 'accept' | 'decline') => {
+    setRespondingTo(membershipId);
+    const res = await apiRequest(`/organizations/invitations/${membershipId}/${action}`, { method: 'POST' });
+    setRespondingTo(null);
+    if (res.success) {
+      await refreshProfile();
+      show(action === 'accept' ? `You joined ${orgName}` : `Invitation from ${orgName} declined`, 'success');
+    } else {
+      show(res.error?.message || 'Unable to respond to the invitation', 'error');
+    }
+  };
+
+  const options = memberships.filter((m) => m.status !== 'invited');
+  const invitations = memberships.filter((m) => m.status === 'invited');
   const currentLabel = organization?.name || 'Organization';
 
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
+    <div ref={ref} style={{ position: 'relative', minWidth: 0 }}>
       <button
         onClick={() => setOpen((v) => !v)}
         className="btn btn-ghost"
@@ -57,8 +71,11 @@ export const OrganizationSwitcher: React.FC<OrganizationSwitcherProps> = ({ onNa
           background: '#fff',
         }}
         title="Switch organization"
+        aria-haspopup="menu"
+        aria-expanded={open}
       >
         <div
+          className="app-hide-sm"
           style={{
             width: '2rem',
             height: '2rem',
@@ -74,11 +91,19 @@ export const OrganizationSwitcher: React.FC<OrganizationSwitcherProps> = ({ onNa
           <Building2 size={17} />
         </div>
         <div style={{ textAlign: 'left', minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '220px' }}>
+          <div className="org-switcher-name" style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '220px' }}>
             {currentLabel}
           </div>
           <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Organization</div>
         </div>
+        {invitations.length > 0 && (
+          <span
+            title={`${invitations.length} pending invitation${invitations.length > 1 ? 's' : ''}`}
+            style={{ background: 'var(--color-danger)', color: '#fff', borderRadius: '999px', fontSize: '0.65rem', fontWeight: 700, padding: '0 0.4rem', lineHeight: '1.1rem' }}
+          >
+            {invitations.length}
+          </span>
+        )}
         <ChevronDown size={15} color="var(--text-muted)" />
       </button>
 
@@ -88,7 +113,7 @@ export const OrganizationSwitcher: React.FC<OrganizationSwitcherProps> = ({ onNa
             position: 'absolute',
             top: 'calc(100% + 0.5rem)',
             left: 0,
-            minWidth: '280px',
+            minWidth: 'min(280px, calc(100vw - 2rem))',
             background: '#fff',
             border: '1px solid var(--border-subtle)',
             borderRadius: 'var(--radius-md)',
@@ -146,6 +171,39 @@ export const OrganizationSwitcher: React.FC<OrganizationSwitcherProps> = ({ onNa
               </button>
             );
           })}
+
+          {invitations.length > 0 && (
+            <div style={{ borderTop: '1px solid var(--border-subtle)', marginTop: '0.3rem', paddingTop: '0.3rem' }}>
+              <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', padding: '0.5rem 0.6rem 0.3rem', letterSpacing: '0.04em' }}>
+                Pending invitations
+              </div>
+              {invitations.map((m) => {
+                const orgName = m.organization?.name || 'An organization';
+                const busy = respondingTo === m._id;
+                return (
+                  <div key={m._id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem 0.6rem' }}>
+                    <Mail size={15} color="var(--accent-primary)" />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{orgName}</div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>Invited as {m.role}</div>
+                    </div>
+                    {busy ? (
+                      <Loader2 size={15} className="animate-spin" color="var(--accent-primary)" />
+                    ) : (
+                      <>
+                        <button className="btn btn-primary btn-sm" disabled={respondingTo !== null} onClick={() => handleInvitation(m._id, orgName, 'accept')} title="Accept invitation">
+                          <Check size={13} /> Accept
+                        </button>
+                        <button className="btn btn-ghost btn-sm" disabled={respondingTo !== null} onClick={() => handleInvitation(m._id, orgName, 'decline')} title="Decline invitation" aria-label={`Decline invitation from ${orgName}`}>
+                          <X size={13} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           <div style={{ borderTop: '1px solid var(--border-subtle)', marginTop: '0.3rem', paddingTop: '0.3rem' }}>
             <button

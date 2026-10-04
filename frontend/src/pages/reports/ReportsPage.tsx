@@ -13,6 +13,8 @@ import {
   DollarSign,
   ShieldCheck,
 } from 'lucide-react';
+import { useCurrencySymbol } from '../../utils/currency';
+import { useTaxSystem } from '../../utils/tax';
 
 interface RevenuePoint {
   period: string;
@@ -33,6 +35,8 @@ interface ARAgingData {
 }
 
 export const ReportsPage: React.FC = () => {
+  const currencySymbol = useCurrencySymbol();
+  const { label: taxLabel, taxIdLabel, isGst } = useTaxSystem();
   const [activeTab, setActiveTab] = useState<'revenue' | 'aging' | 'statement' | 'top_clients' | 'gst' | 'hsn' | 'profit'>('revenue');
   const [revenueData, setRevenueData] = useState<RevenuePoint[]>([]);
   const [agingData, setAgingData] = useState<ARAgingData | null>(null);
@@ -100,7 +104,7 @@ export const ReportsPage: React.FC = () => {
         <div>
           <h1 style={{ fontSize: '1.6rem', margin: 0 }}>Financial Intelligence & Reports</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: '0.2rem 0 0' }}>
-            Executive revenue analytics, AR aging distribution, GST tax liability & customer ledgers
+            Executive revenue analytics, AR aging distribution, {taxLabel} liability & customer ledgers
           </p>
         </div>
 
@@ -113,8 +117,13 @@ export const ReportsPage: React.FC = () => {
       <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.5rem', flexWrap: 'wrap' }}>
         {[
           { id: 'revenue', label: 'Revenue Trends', icon: TrendingUp },
-          { id: 'gst', label: 'GST Summary', icon: FileText },
-          { id: 'hsn', label: 'HSN Summary', icon: FileText },
+          // GST filing and HSN summaries are India-specific statutory reports.
+          ...(isGst
+            ? [
+                { id: 'gst', label: 'GST Summary', icon: FileText },
+                { id: 'hsn', label: 'HSN Summary', icon: FileText },
+              ]
+            : []),
           { id: 'profit', label: 'Profit & Loss', icon: DollarSign },
           { id: 'aging', label: 'Accounts Receivable (AR) Aging', icon: Clock },
           { id: 'statement', label: 'Customer Account Statement', icon: FileText },
@@ -149,19 +158,19 @@ export const ReportsPage: React.FC = () => {
                 <span className="kpi-title">Total Invoiced Revenue</span>
                 <DollarSign size={18} color="var(--accent-primary)" />
               </div>
-              <div className="kpi-value">₹{totalYearlyRevenue.toLocaleString()}</div>
+              <div className="kpi-value">{currencySymbol}{totalYearlyRevenue.toLocaleString()}</div>
               <div className="kpi-desc">Across all invoiced periods</div>
             </div>
 
             <div className="kpi-card">
               <div className="kpi-header">
-                <span className="kpi-title">GST Tax Liability Collected</span>
+                <span className="kpi-title">{taxLabel} Liability Collected</span>
                 <ShieldCheck size={18} color="var(--color-success)" />
               </div>
               <div className="kpi-value" style={{ color: 'var(--color-success)' }}>
-                ₹{totalTaxCollected.toLocaleString()}
+                {currencySymbol}{totalTaxCollected.toLocaleString()}
               </div>
-              <div className="kpi-desc">CGST, SGST & IGST combined</div>
+              <div className="kpi-desc">{isGst ? 'CGST, SGST & IGST combined' : `Total ${taxLabel} collected`}</div>
             </div>
 
             <div className="kpi-card">
@@ -182,7 +191,7 @@ export const ReportsPage: React.FC = () => {
                   <th>Period</th>
                   <th>Invoices Issued</th>
                   <th>Taxable Volume</th>
-                  <th>GST Tax Amount</th>
+                  <th>{taxLabel} Amount</th>
                   <th>Total Revenue</th>
                 </tr>
               </thead>
@@ -198,10 +207,10 @@ export const ReportsPage: React.FC = () => {
                     <tr key={idx}>
                       <td style={{ fontWeight: 700 }}>{r.period}</td>
                       <td>{r.invoiceCount} invoices</td>
-                      <td className="num-mono">₹{(r.totalRevenue - r.taxTotal).toLocaleString()}</td>
-                      <td className="num-mono" style={{ color: 'var(--color-success)' }}>₹{r.taxTotal.toLocaleString()}</td>
+                      <td className="num-mono">{currencySymbol}{(r.totalRevenue - r.taxTotal).toLocaleString()}</td>
+                      <td className="num-mono" style={{ color: 'var(--color-success)' }}>{currencySymbol}{r.taxTotal.toLocaleString()}</td>
                       <td className="num-mono" style={{ fontWeight: 700, color: 'var(--accent-primary)', fontSize: '0.95rem' }}>
-                        ₹{r.totalRevenue.toLocaleString()}
+                        {currencySymbol}{r.totalRevenue.toLocaleString()}
                       </td>
                     </tr>
                   ))
@@ -215,11 +224,11 @@ export const ReportsPage: React.FC = () => {
       {/* TAB 2: AR AGING MATRIX */}
       {activeTab === 'aging' && agingData && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem' }}>
             <div className="kpi-card" style={{ borderLeft: '4px solid #10b981' }}>
               <span className="kpi-title">Current (0-30 Days)</span>
               <div className="kpi-value" style={{ color: '#10b981' }}>
-                ₹{agingData.buckets.current.amount.toLocaleString()}
+                {currencySymbol}{agingData.buckets.current.amount.toLocaleString()}
               </div>
               <div className="kpi-desc">{agingData.buckets.current.count} open invoices</div>
             </div>
@@ -227,7 +236,7 @@ export const ReportsPage: React.FC = () => {
             <div className="kpi-card" style={{ borderLeft: '4px solid #f59e0b' }}>
               <span className="kpi-title">31-60 Days Overdue</span>
               <div className="kpi-value" style={{ color: '#f59e0b' }}>
-                ₹{agingData.buckets.days30to60.amount.toLocaleString()}
+                {currencySymbol}{agingData.buckets.days30to60.amount.toLocaleString()}
               </div>
               <div className="kpi-desc">{agingData.buckets.days30to60.count} open invoices</div>
             </div>
@@ -235,7 +244,7 @@ export const ReportsPage: React.FC = () => {
             <div className="kpi-card" style={{ borderLeft: '4px solid #ea580c' }}>
               <span className="kpi-title">61-90 Days Overdue</span>
               <div className="kpi-value" style={{ color: '#ea580c' }}>
-                ₹{agingData.buckets.days60to90.amount.toLocaleString()}
+                {currencySymbol}{agingData.buckets.days60to90.amount.toLocaleString()}
               </div>
               <div className="kpi-desc">{agingData.buckets.days60to90.count} open invoices</div>
             </div>
@@ -243,7 +252,7 @@ export const ReportsPage: React.FC = () => {
             <div className="kpi-card" style={{ borderLeft: '4px solid #e11d48' }}>
               <span className="kpi-title">90+ Days Overdue</span>
               <div className="kpi-value" style={{ color: '#e11d48' }}>
-                ₹{agingData.buckets.days90Plus.amount.toLocaleString()}
+                {currencySymbol}{agingData.buckets.days90Plus.amount.toLocaleString()}
               </div>
               <div className="kpi-desc">{agingData.buckets.days90Plus.count} critical risk</div>
             </div>
@@ -288,7 +297,7 @@ export const ReportsPage: React.FC = () => {
                           <span className="badge badge-overdue">{inv.daysOverdue} days</span>
                         </td>
                         <td className="num-mono" style={{ fontWeight: 700, color: 'var(--color-danger)' }}>
-                          ₹{inv.amountDue.toLocaleString()}
+                          {currencySymbol}{inv.amountDue.toLocaleString()}
                         </td>
                       </tr>
                     ))
@@ -314,7 +323,7 @@ export const ReportsPage: React.FC = () => {
               <option value="">-- Choose Customer --</option>
               {customers.map((c) => (
                 <option key={c._id} value={c._id}>
-                  {c.name} {c.companyName ? `(${c.companyName})` : ''} - Outstanding: ₹{c.outstandingBalance.toLocaleString()}
+                  {c.name} {c.companyName ? `(${c.companyName})` : ''} - Outstanding: {currencySymbol}{c.outstandingBalance.toLocaleString()}
                 </option>
               ))}
             </select>
@@ -333,13 +342,13 @@ export const ReportsPage: React.FC = () => {
                     {statementData.customer?.name} ({statementData.customer?.companyName || 'Corporate Client'})
                   </div>
                   <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    GSTIN: {statementData.customer?.gstinOrTaxId || 'Unregistered'}
+                    {taxIdLabel}: {statementData.customer?.gstinOrTaxId || 'Unregistered'}
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Current Net Outstanding:</div>
                   <div className="num-mono" style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--accent-primary)' }}>
-                    ₹{statementData.currentOutstanding.toLocaleString()}
+                    {currencySymbol}{statementData.currentOutstanding.toLocaleString()}
                   </div>
                 </div>
               </div>
@@ -366,13 +375,13 @@ export const ReportsPage: React.FC = () => {
                       </td>
                       <td className="num-mono" style={{ padding: '0.65rem 0.75rem', fontWeight: 600 }}>{entry.reference}</td>
                       <td className="num-mono" style={{ padding: '0.65rem 0.75rem', textAlign: 'right' }}>
-                        {entry.debit > 0 ? `₹${entry.debit.toLocaleString()}` : '-'}
+                        {entry.debit > 0 ? `${currencySymbol}${entry.debit.toLocaleString()}` : '-'}
                       </td>
                       <td className="num-mono" style={{ padding: '0.65rem 0.75rem', textAlign: 'right', color: 'var(--color-success)' }}>
-                        {entry.credit > 0 ? `₹${entry.credit.toLocaleString()}` : '-'}
+                        {entry.credit > 0 ? `${currencySymbol}${entry.credit.toLocaleString()}` : '-'}
                       </td>
                       <td className="num-mono" style={{ padding: '0.65rem 0.75rem', textAlign: 'right', fontWeight: 700 }}>
-                        ₹{entry.runningBalance.toLocaleString()}
+                        {currencySymbol}{entry.runningBalance.toLocaleString()}
                       </td>
                     </tr>
                   ))}
@@ -396,7 +405,7 @@ export const ReportsPage: React.FC = () => {
                 <th>Customer / Organization</th>
                 <th>Email</th>
                 <th>State & Jurisdiction</th>
-                <th>GSTIN</th>
+                <th>{taxIdLabel}</th>
                 <th>Outstanding Receivables</th>
               </tr>
             </thead>
@@ -411,7 +420,7 @@ export const ReportsPage: React.FC = () => {
                   <td>{c.billingAddress?.state || 'Local State'}</td>
                   <td className="num-mono">{c.gstinOrTaxId || 'Unregistered'}</td>
                   <td className="num-mono" style={{ fontWeight: 700, color: c.outstandingBalance > 0 ? 'var(--color-danger)' : 'var(--color-success)' }}>
-                    ₹{c.outstandingBalance.toLocaleString()}
+                    {currencySymbol}{c.outstandingBalance.toLocaleString()}
                   </td>
                 </tr>
               ))}
@@ -436,24 +445,24 @@ export const ReportsPage: React.FC = () => {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
                 <div className="kpi-card">
                   <div className="kpi-header"><span className="kpi-title">Taxable Value</span></div>
-                  <div className="kpi-value">₹{totalTaxable.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                  <div className="kpi-value">{currencySymbol}{totalTaxable.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
                 </div>
                 <div className="kpi-card">
                   <div className="kpi-header"><span className="kpi-title">CGST</span></div>
-                  <div className="kpi-value">₹{cgstTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                  <div className="kpi-value">{currencySymbol}{cgstTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
                 </div>
                 <div className="kpi-card">
                   <div className="kpi-header"><span className="kpi-title">SGST</span></div>
-                  <div className="kpi-value">₹{sgstTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                  <div className="kpi-value">{currencySymbol}{sgstTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
                 </div>
                 <div className="kpi-card">
                   <div className="kpi-header"><span className="kpi-title">IGST</span></div>
-                  <div className="kpi-value">₹{igstTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                  <div className="kpi-value">{currencySymbol}{igstTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
                 </div>
                 <div className="kpi-card" style={{ borderLeft: '4px solid var(--accent-primary)' }}>
                   <div className="kpi-header"><span className="kpi-title">Total GST</span></div>
                   <div className="kpi-value" style={{ color: 'var(--accent-primary)', fontWeight: 800 }}>
-                    ₹{totalTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    {currencySymbol}{totalTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                   </div>
                 </div>
               </div>
@@ -481,12 +490,12 @@ export const ReportsPage: React.FC = () => {
                       gstSummary.breakdown.map((b: any, idx: number) => (
                         <tr key={idx}>
                           <td>{b.rate}%</td>
-                          <td className="num-mono">₹{b.taxableValue?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '0.00'}</td>
-                          <td className="num-mono">₹{b.cgst?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '0.00'}</td>
-                          <td className="num-mono">₹{b.sgst?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '0.00'}</td>
-                          <td className="num-mono">₹{b.igst?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '0.00'}</td>
+                          <td className="num-mono">{currencySymbol}{b.taxableValue?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '0.00'}</td>
+                          <td className="num-mono">{currencySymbol}{b.cgst?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '0.00'}</td>
+                          <td className="num-mono">{currencySymbol}{b.sgst?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '0.00'}</td>
+                          <td className="num-mono">{currencySymbol}{b.igst?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '0.00'}</td>
                           <td className="num-mono" style={{ fontWeight: 700, color: 'var(--accent-primary)' }}>
-                            ₹{b.totalTax?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '0.00'}
+                            {currencySymbol}{b.totalTax?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '0.00'}
                           </td>
                         </tr>
                       ))
@@ -512,9 +521,9 @@ export const ReportsPage: React.FC = () => {
                 <thead>
                   <tr>
                     <th>HSN / SAC Code</th>
-                    <th>Taxable Value (₹)</th>
-                    <th>Tax Amount (₹)</th>
-                    <th>Total Value (₹)</th>
+                    <th>Taxable Value ({currencySymbol})</th>
+                    <th>Tax Amount ({currencySymbol})</th>
+                    <th>Total Value ({currencySymbol})</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -528,12 +537,12 @@ export const ReportsPage: React.FC = () => {
                     gstSummary.hsnSummary.map((h: any, idx: number) => (
                       <tr key={idx}>
                         <td style={{ fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{h.hsn || 'Unassigned'}</td>
-                        <td className="num-mono">₹{h.taxable?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}</td>
+                        <td className="num-mono">{currencySymbol}{h.taxable?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}</td>
                         <td className="num-mono" style={{ color: 'var(--color-success)' }}>
-                          ₹{h.taxAmount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+                          {currencySymbol}{h.taxAmount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
                         </td>
                         <td className="num-mono" style={{ fontWeight: 700, color: 'var(--accent-primary)' }}>
-                          ₹{((h.taxable || 0) + (h.taxAmount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {currencySymbol}{((h.taxable || 0) + (h.taxAmount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                       </tr>
                     ))
@@ -553,24 +562,24 @@ export const ReportsPage: React.FC = () => {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
               <div className="kpi-card">
                 <div className="kpi-header"><span className="kpi-title">Net Sales Revenue</span></div>
-                <div className="kpi-value" style={{ color: 'var(--color-success)' }}>₹{profitReport.netSales?.toLocaleString() || 0}</div>
+                <div className="kpi-value" style={{ color: 'var(--color-success)' }}>{currencySymbol}{profitReport.netSales?.toLocaleString() || 0}</div>
               </div>
               <div className="kpi-card">
                 <div className="kpi-header"><span className="kpi-title">Cost of Goods Sold (COGS)</span></div>
-                <div className="kpi-value" style={{ color: 'var(--color-danger)' }}>₹{profitReport.cogs?.toLocaleString() || 0}</div>
+                <div className="kpi-value" style={{ color: 'var(--color-danger)' }}>{currencySymbol}{profitReport.cogs?.toLocaleString() || 0}</div>
               </div>
               <div className="kpi-card">
                 <div className="kpi-header"><span className="kpi-title">Gross Profit</span></div>
-                <div className="kpi-value">₹{profitReport.grossProfit?.toLocaleString() || 0}</div>
+                <div className="kpi-value">{currencySymbol}{profitReport.grossProfit?.toLocaleString() || 0}</div>
               </div>
               <div className="kpi-card">
                 <div className="kpi-header"><span className="kpi-title">Total Expenses</span></div>
-                <div className="kpi-value" style={{ color: 'var(--color-danger)' }}>₹{profitReport.totalExpenses?.toLocaleString() || 0}</div>
+                <div className="kpi-value" style={{ color: 'var(--color-danger)' }}>{currencySymbol}{profitReport.totalExpenses?.toLocaleString() || 0}</div>
               </div>
               <div className="kpi-card">
                 <div className="kpi-header"><span className="kpi-title">Net Profit</span></div>
                 <div className="kpi-value" style={{ color: profitReport.netProfit >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>
-                  ₹{profitReport.netProfit?.toLocaleString() || 0}
+                  {currencySymbol}{profitReport.netProfit?.toLocaleString() || 0}
                 </div>
               </div>
             </div>

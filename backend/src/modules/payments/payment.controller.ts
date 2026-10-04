@@ -18,9 +18,9 @@ export async function listPayments(req: Request, res: Response, next: NextFuncti
       query.customerId = new mongoose.Types.ObjectId(String(customerId));
     }
 
-    const skip = (Number(page) - 1) * Number(limit);
+    const { page: pageNum, limit: pageSize, skip } = parsePagination(page, limit);
     const [payments, total] = await Promise.all([
-      PaymentModel.find(query).sort({ paymentDate: -1 }).skip(skip).limit(Number(limit)),
+      PaymentModel.find(query).sort({ paymentDate: -1 }).skip(skip).limit(pageSize),
       PaymentModel.countDocuments(query),
     ]);
 
@@ -28,10 +28,10 @@ export async function listPayments(req: Request, res: Response, next: NextFuncti
       success: true,
       data: payments,
       pagination: {
-        page: Number(page),
-        limit: Number(limit),
+        page: pageNum,
+        limit: pageSize,
         total,
-        totalPages: Math.ceil(total / Number(limit)),
+        totalPages: Math.ceil(total / pageSize),
         hasMore: skip + payments.length < total,
       },
     });
@@ -353,6 +353,7 @@ export async function refundPayment(req: Request, res: Response, next: NextFunct
 }
 
 import { SandboxPaymentProvider, StripePaymentProvider, IPaymentProvider } from './providers/PaymentProvider';
+import { parsePagination } from '../../core/utils/query';
 
 export async function testCheckout(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {

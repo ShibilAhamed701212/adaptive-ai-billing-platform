@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { X, Plus, AlertCircle } from 'lucide-react';
 import { apiRequest } from '../../api/client';
 import { Product } from '@billing/shared';
+import { useCurrencySymbol } from '../../utils/currency';
+import { useTaxSystem } from '../../utils/tax';
+import { TaxRateSelect } from '../common/TaxRateSelect';
 
 interface QuickProductModalProps {
   isOpen: boolean;
@@ -16,12 +19,14 @@ export const QuickProductModal: React.FC<QuickProductModalProps> = ({
   barcode,
   onCreated,
 }) => {
+  const currencySymbol = useCurrencySymbol();
+  const { label: taxLabel, defaultRate } = useTaxSystem();
   const [name, setName] = useState('');
   const [sku, setSku] = useState(`SKU-${Date.now().toString().slice(-5)}`);
   const [unitPrice, setUnitPrice] = useState<number | ''>('');
   const [costPrice, setCostPrice] = useState<number | ''>('');
   const [mrp, setMrp] = useState<number | ''>('');
-  const [taxRate, setTaxRate] = useState<number>(0.18);
+  const [taxRate, setTaxRate] = useState<number>(defaultRate);
   const [stockQuantity, setStockQuantity] = useState<number | ''>(10);
   const [category, setCategory] = useState('');
   const [loading, setLoading] = useState(false);
@@ -72,7 +77,7 @@ export const QuickProductModal: React.FC<QuickProductModalProps> = ({
 
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }}>
-      <div style={{ background: 'var(--bg-primary)', padding: '2rem', borderRadius: '12px', width: '480px', boxShadow: '0 8px 32px rgba(0,0,0,0.25)' }}>
+      <div style={{ background: 'var(--bg-primary)', padding: '2rem', borderRadius: '12px', width: 'min(480px, calc(100vw - 2rem))', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.25)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
           <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Plus size={20} style={{ color: 'var(--accent-primary)' }} /> Add Unknown Barcode Item
@@ -107,29 +112,23 @@ export const QuickProductModal: React.FC<QuickProductModalProps> = ({
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
             <div>
-              <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Selling Price (₹) *</label>
+              <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Selling Price ({currencySymbol}) *</label>
               <input type="number" step="0.01" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value ? Number(e.target.value) : '')} required style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', marginTop: '0.25rem' }} />
             </div>
             <div>
-              <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>MRP (₹)</label>
+              <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>MRP ({currencySymbol})</label>
               <input type="number" step="0.01" value={mrp} onChange={(e) => setMrp(e.target.value ? Number(e.target.value) : '')} style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', marginTop: '0.25rem' }} />
             </div>
             <div>
-              <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Cost Price (₹)</label>
+              <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Cost Price ({currencySymbol})</label>
               <input type="number" step="0.01" value={costPrice} onChange={(e) => setCostPrice(e.target.value ? Number(e.target.value) : '')} style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', marginTop: '0.25rem' }} />
             </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
             <div>
-              <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>GST Rate</label>
-              <select value={taxRate} onChange={(e) => setTaxRate(Number(e.target.value))} style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', marginTop: '0.25rem' }}>
-                <option value={0}>0% (Exempt)</option>
-                <option value={0.05}>5%</option>
-                <option value={0.12}>12%</option>
-                <option value={0.18}>18% (Standard)</option>
-                <option value={0.28}>28%</option>
-              </select>
+              <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{taxLabel} Rate</label>
+              <TaxRateSelect value={taxRate} onChange={setTaxRate} style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', marginTop: '0.25rem' }} />
             </div>
             <div>
               <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Initial Stock</label>

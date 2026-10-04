@@ -11,13 +11,22 @@ export async function listUsers(req: Request, res: Response, next: NextFunction)
     const memberships = await MembershipModel.find({ organizationId: new mongoose.Types.ObjectId(orgId) })
       .populate({ path: 'userId', select: '-passwordHash' })
       .sort({ createdAt: -1 });
+    // Only expose what this organization needs; a pending invitee's profile stays private until they accept.
     const users = memberships
       .filter((membership: any) => membership.userId)
-      .map((membership: any) => ({
-        ...(membership.userId.toObject?.() || membership.userId),
-        role: membership.role,
-        isActive: membership.status === 'active',
-      }));
+      .map((membership: any) => {
+        const u = membership.userId;
+        const invited = membership.status === 'invited';
+        return {
+          _id: u._id,
+          name: invited ? u.email : u.name,
+          email: u.email,
+          role: membership.role,
+          status: membership.status,
+          isActive: membership.status === 'active',
+          createdAt: membership.createdAt,
+        };
+      });
     res.json({ success: true, data: users });
   } catch (err) {
     next(err);
@@ -48,13 +57,23 @@ export async function createUser(req: Request, res: Response, next: NextFunction
         res.status(409).json({ success: false, error: { code: 'USER_EXISTS', message: 'This user already belongs to the organization' } });
         return;
       }
+      // Existing accounts must consent: they get a pending invitation they accept from their org switcher.
       await MembershipModel.create({
         userId: existing._id,
         organizationId: new mongoose.Types.ObjectId(orgId),
         role: role || 'viewer',
-        status: 'active',
+        status: 'invited',
       });
-      res.status(201).json({ success: true, data: { _id: existing._id, name: existing.name, email: existing.email, role: role || 'viewer', isActive: true } });
+      await logAuditEvent({
+        organizationId: orgId,
+        userId: req.tenant!.userId,
+        userEmail: req.tenant!.email,
+        action: 'INVITE_USER',
+        entityType: 'User',
+        entityId: String(existing._id),
+        details: { email: existing.email, role: role || 'viewer', status: 'invited' },
+      });
+      res.status(201).json({ success: true, data: { _id: existing._id, name: existing.email, email: existing.email, role: role || 'viewer', status: 'invited', isActive: false } });
       return;
     }
     if (!password || String(password).length < 8) {
@@ -117,6 +136,18 @@ export async function updateUser(req: Request, res: Response, next: NextFunction
       res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid user role' } });
       return;
     }
+    // A pending invitation only becomes active when the invitee accepts it.
+    if (membership.status === 'invited') {
+      if (isActive === true) {
+        res.status(409).json({ success: false, error: { code: 'INVITATION_PENDING', message: 'This person has not accepted the invitation yet' } });
+        return;
+      }
+      if (isActive === false) {
+        await membership.deleteOne();
+        res.json({ success: true, data: { _id: user._id, email: user.email, status: 'cancelled', isActive: false } });
+        return;
+      }
+    }
     if (password && String(password).length < 8) {
       res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Password must be at least 8 characters' } });
       return;
@@ -125,6 +156,16 @@ export async function updateUser(req: Request, res: Response, next: NextFunction
       const activeAdminCount = await MembershipModel.countDocuments({ organizationId: new mongoose.Types.ObjectId(orgId), role: 'admin', status: 'active' });
       if (membership.role === 'admin' && membership.status === 'active' && activeAdminCount <= 1) {
         res.status(400).json({ success: false, error: { code: 'LAST_ADMIN', message: 'Assign another active administrator before changing or disabling the last administrator' } });
+        return;
+      }
+    }
+    // Name and password live on the global user account. An org admin may only change them for
+    // accounts that belong to no other organization, otherwise any admin could reset the password
+    // of a user from another tenant (after adding them by email) and take over that tenant.
+    if (name || password) {
+      const otherMemberships = await MembershipModel.exists({ userId: user._id, organizationId: { $ne: new mongoose.Types.ObjectId(orgId) } });
+      if (otherMemberships) {
+        res.status(403).json({ success: false, error: { code: 'SHARED_ACCOUNT', message: 'This user also belongs to another organization; only they can change their name or password' } });
         return;
       }
     }

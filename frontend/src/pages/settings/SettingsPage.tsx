@@ -4,8 +4,10 @@ import { apiRequest } from '../../api/client';
 import { CustomFieldDefinition, BusinessRule, TargetEntity, CustomFieldType } from '@billing/shared';
 import { Sliders, Plus, Trash2, Layers, Cpu, Building2, CheckCircle2, Palette } from 'lucide-react';
 import { InvoiceTemplateCustomizer } from '../../components/invoices/InvoiceTemplateCustomizer';
+import { useCurrencySymbol } from '../../utils/currency';
 
 export const SettingsPage: React.FC = () => {
+  const currencySymbol = useCurrencySymbol();
   const { organization, updateOrganization } = useAuth();
   const [activeTab, setActiveTab] = useState<'fields' | 'rules' | 'org' | 'templates'>('fields');
 
@@ -191,7 +193,7 @@ export const SettingsPage: React.FC = () => {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.5rem' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.5rem' }}>
         <button
           className={`btn ${activeTab === 'fields' ? 'btn-primary' : 'btn-secondary'} btn-sm`}
           onClick={() => setActiveTab('fields')}
@@ -220,7 +222,7 @@ export const SettingsPage: React.FC = () => {
 
       {/* Tab 1: Custom Field Definitions */}
       {activeTab === 'fields' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 2fr', gap: '1.5rem' }}>
+        <div className="stack-md" style={{ display: 'grid', gridTemplateColumns: '1.2fr 2fr', gap: '1.5rem' }}>
           {/* Add Field Form */}
           <div className="glass-panel" style={{ padding: '1.5rem' }}>
             <h3 style={{ fontSize: '1.1rem', margin: '0 0 0.25rem' }}>Define Custom Field</h3>
@@ -361,7 +363,7 @@ export const SettingsPage: React.FC = () => {
 
       {/* Tab 2: Declarative Business Rules */}
       {activeTab === 'rules' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 2fr', gap: '1.5rem' }}>
+        <div className="stack-md" style={{ display: 'grid', gridTemplateColumns: '1.2fr 2fr', gap: '1.5rem' }}>
           {/* Rule Builder Form */}
           <div className="glass-panel" style={{ padding: '1.5rem' }}>
             <h3 style={{ fontSize: '1.1rem', margin: '0 0 0.25rem' }}>Add Business Rule</h3>
@@ -391,7 +393,7 @@ export const SettingsPage: React.FC = () => {
                 <span className="element-desc">Execution hook in billing lifecycle</span>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '0.5rem' }}>
+              <div className="stack-sm" style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '0.5rem' }}>
                 <div className="form-group">
                   <label className="form-label">Context Field</label>
                   <select className="form-select" value={ruleField} onChange={(e) => setRuleField(e.target.value)}>
@@ -422,12 +424,12 @@ export const SettingsPage: React.FC = () => {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '0.75rem' }}>
+              <div className="stack-sm" style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '0.75rem' }}>
                 <div className="form-group">
                   <label className="form-label">Action to Apply</label>
                   <select className="form-select" value={ruleActionType} onChange={(e) => setRuleActionType(e.target.value)}>
                     <option value="apply_discount">Apply Discount (%)</option>
-                    <option value="add_surcharge">Add Surcharge (₹)</option>
+                    <option value="add_surcharge">Add Surcharge ({currencySymbol})</option>
                     <option value="require_approval">Require Manager Approval</option>
                   </select>
                   <span className="element-desc">Automatic outcome</span>
@@ -528,7 +530,7 @@ export const SettingsPage: React.FC = () => {
               <input type="text" className="form-input" value={orgName} onChange={(e) => setOrgName(e.target.value)} />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div className="stack-sm" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div className="form-group">
                 <label className="form-label">Business type</label>
                 <select className="form-select" value={businessType} onChange={(e) => setBusinessType(e.target.value)}>
@@ -549,7 +551,7 @@ export const SettingsPage: React.FC = () => {
               <input type="text" className="form-input" value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="Asia/Kolkata" />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div className="stack-sm" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div className="form-group">
                 <label className="form-label">GSTIN / Tax ID</label>
                 <input type="text" className="form-input" value={gstin} onChange={(e) => setGstin(e.target.value)} />
@@ -565,7 +567,7 @@ export const SettingsPage: React.FC = () => {
               <input type="text" className="form-input" value={street} onChange={(e) => setStreet(e.target.value)} />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+            <div className="stack-sm" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
               <div className="form-group">
                 <label className="form-label">City</label>
                 <input type="text" className="form-input" value={city} onChange={(e) => setCity(e.target.value)} />

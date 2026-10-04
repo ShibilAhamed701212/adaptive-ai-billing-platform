@@ -1,39 +1,44 @@
-import React, { useEffect, useState } from 'react';
-import { apiRequest } from '../../api/client';
+import React, { useEffect, useRef, useState } from 'react';
+import { fetchAllPages } from '../../api/client';
+import { useDebouncedValue } from '../../utils/useDebouncedValue';
 import { Invoice } from '@billing/shared';
 import { Plus, Search, FileText, ArrowRight } from 'lucide-react';
+import { useCurrencySymbol } from '../../utils/currency';
 
 interface InvoicesListPageProps {
   onNavigate: (path: string) => void;
 }
 
 export const InvoicesListPage: React.FC<InvoicesListPageProps> = ({ onNavigate }) => {
+  const currencySymbol = useCurrencySymbol();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [search, setSearch] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
 
+  const debouncedSearch = useDebouncedValue(search);
+  const requestSeq = useRef(0);
+
   const fetchInvoices = async () => {
+    // Ignore responses that arrive after a newer search/filter was issued.
+    const seq = ++requestSeq.current;
     setLoading(true);
-    try {
-      let endpoint = `/invoices?search=${encodeURIComponent(search)}`;
-      if (statusFilter !== 'all') {
-        endpoint += `&status=${statusFilter}`;
-      }
-      const res = await apiRequest<Invoice[]>(endpoint);
-      if (res.success && res.data) {
-        setInvoices(res.data);
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
+    let endpoint = `/invoices?search=${encodeURIComponent(debouncedSearch)}`;
+    if (statusFilter !== 'all') {
+      endpoint += `&status=${statusFilter}`;
     }
+    const res = await fetchAllPages<Invoice>(endpoint);
+    if (seq !== requestSeq.current) return;
+    if (res.success && res.data) {
+      setInvoices(res.data);
+    }
+    setLoading(false);
   };
 
   useEffect(() => {
     fetchInvoices();
-  }, [statusFilter, search]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, debouncedSearch]);
 
   const statuses = ['all', 'draft', 'pending_approval', 'sent', 'partially_paid', 'paid', 'overdue'];
 
@@ -102,8 +107,8 @@ export const InvoicesListPage: React.FC<InvoicesListPageProps> = ({ onNavigate }
                 <th>Client / Account</th>
                 <th>Issue Date</th>
                 <th>Due Date</th>
-                <th>Grand Total (₹)</th>
-                <th>Amount Due (₹)</th>
+                <th>Grand Total ({currencySymbol})</th>
+                <th>Amount Due ({currencySymbol})</th>
                 <th>Status</th>
                 <th>AI Risk Score</th>
                 <th>Actions</th>
@@ -137,10 +142,10 @@ export const InvoicesListPage: React.FC<InvoicesListPageProps> = ({ onNavigate }
                     <td>{inv.issueDate}</td>
                     <td>{inv.dueDate}</td>
                     <td style={{ fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
-                      ₹{inv.grandTotal.toLocaleString()}
+                      {currencySymbol}{inv.grandTotal.toLocaleString()}
                     </td>
                     <td style={{ fontWeight: 600, fontFamily: 'var(--font-mono)', color: inv.amountDue > 0 ? 'var(--color-warning)' : 'var(--color-success)' }}>
-                      ₹{inv.amountDue.toLocaleString()}
+                      {currencySymbol}{inv.amountDue.toLocaleString()}
                     </td>
                     <td>
                       <span className={`badge badge-${inv.status}`}>{inv.status.replace('_', ' ')}</span>

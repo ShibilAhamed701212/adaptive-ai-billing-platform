@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { apiRequest } from '../../api/client';
+import { apiRequest, fetchAllPages } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import { Product, Customer } from '@billing/shared';
 import { ShoppingCart, ScanLine, X, Search, Check, Banknote, User, Tag, AlertTriangle, RefreshCw, Cloud } from 'lucide-react';
@@ -9,6 +9,8 @@ import { QuickProductModal } from '../../components/pos/QuickProductModal';
 import { ThermalReceiptModal } from '../../components/pos/ThermalReceiptModal';
 import { queueOfflineSale, getQueuedSales, removeQueuedSale } from '../../utils/offlineDb';
 import { usePOSCart } from '../../context/POSCartContext';
+import { useCurrencySymbol } from '../../utils/currency';
+import { useTaxSystem } from '../../utils/tax';
 
 interface CartItem extends Product {
   cartQuantity: number;
@@ -51,6 +53,8 @@ function useBarcodeScanner(onScan: (code: string) => void, active: boolean = tru
 }
 
 export const PointOfSalePage: React.FC = () => {
+  const currencySymbol = useCurrencySymbol();
+  const { label: taxLabel } = useTaxSystem();
   const { organization } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -196,7 +200,7 @@ export const PointOfSalePage: React.FC = () => {
 
   const fetchCustomers = async () => {
     try {
-      const res = await apiRequest<Customer[]>('/customers?limit=100');
+      const res = await fetchAllPages<Customer>('/customers');
       if (res.success && res.data) {
         setCustomers(res.data);
         if (res.data.length > 0 && !selectedCustomerId) {
@@ -359,7 +363,7 @@ export const PointOfSalePage: React.FC = () => {
   };
 
   return (
-    <div style={{ display: 'flex', height: 'calc(100vh - 64px)', background: 'var(--bg-secondary)', margin: '-1.5rem', marginTop: '-1.5rem' }}>
+    <div className="pos-layout" style={{ display: 'flex', height: 'calc(100vh - 4.25rem)', background: 'var(--bg-secondary)', margin: '-2rem' }}>
       
       {/* Left: Product Selection */}
       <div style={{ flex: 1, padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -408,7 +412,7 @@ export const PointOfSalePage: React.FC = () => {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem', overflowY: 'auto', paddingRight: '0.5rem' }}>
+        <div className="pos-product-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem', overflowY: 'auto', paddingRight: '0.5rem' }}>
           {products.map((p) => (
             <div 
               key={p._id as string}
@@ -419,7 +423,7 @@ export const PointOfSalePage: React.FC = () => {
               <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{p.sku} | {p.barcode || 'No barcode'}</div>
               <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Stock: {p.stockQuantity || 0}</div>
               <div style={{ color: 'var(--accent-primary)', fontWeight: 600, fontSize: '1.1rem', marginTop: 'auto' }}>
-                ₹{p.unitPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                {currencySymbol}{p.unitPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
               </div>
             </div>
           ))}
@@ -427,7 +431,7 @@ export const PointOfSalePage: React.FC = () => {
       </div>
 
       {/* Right: Cart & Checkout */}
-      <div style={{ width: '400px', background: 'var(--bg-primary)', borderLeft: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column' }}>
+      <div className="pos-cart" style={{ width: '400px', background: 'var(--bg-primary)', borderLeft: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <ShoppingCart size={24} /> Current Order
@@ -470,9 +474,9 @@ export const PointOfSalePage: React.FC = () => {
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 500 }}>{item.name}</div>
                       <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                        ₹{item.unitPrice.toLocaleString()} x {item.cartQuantity}
+                        {currencySymbol}{item.unitPrice.toLocaleString()} x {item.cartQuantity}
                         {item.mrp && item.mrp > item.unitPrice && (
-                          <span style={{ textDecoration: 'line-through', marginLeft: '0.5rem', color: 'var(--text-muted)' }}>MRP ₹{item.mrp}</span>
+                          <span style={{ textDecoration: 'line-through', marginLeft: '0.5rem', color: 'var(--text-muted)' }}>MRP {currencySymbol}{item.mrp}</span>
                         )}
                       </div>
                     </div>
@@ -491,7 +495,7 @@ export const PointOfSalePage: React.FC = () => {
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                      <Tag size={12} /> Item Discount (₹):
+                      <Tag size={12} /> Item Discount ({currencySymbol}):
                     </span>
                     <input 
                       type="number"
@@ -512,12 +516,12 @@ export const PointOfSalePage: React.FC = () => {
         <div style={{ padding: '1.25rem 1.5rem', borderTop: '1px solid var(--border-color)', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
             <span>Subtotal</span>
-            <span>₹{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+            <span>{currencySymbol}{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              <Tag size={14} /> Bill Discount (₹)
+              <Tag size={14} /> Bill Discount ({currencySymbol})
             </span>
             <input 
               type="number"
@@ -532,18 +536,18 @@ export const PointOfSalePage: React.FC = () => {
           {totalDiscount > 0 && (
             <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-success)', fontSize: '0.9rem' }}>
               <span>Total Discount Savings</span>
-              <span>-₹{totalDiscount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+              <span>-{currencySymbol}{totalDiscount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
             </div>
           )}
 
           <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-            <span>Tax (GST)</span>
-            <span>₹{tax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+            <span>Tax ({taxLabel})</span>
+            <span>{currencySymbol}{tax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.4rem', fontWeight: 700, paddingTop: '0.5rem', borderTop: '1px solid var(--border-color)' }}>
             <span>Grand Total</span>
-            <span>₹{total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+            <span>{currencySymbol}{total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
           </div>
 
           <div style={{ marginTop: '0.5rem' }}>

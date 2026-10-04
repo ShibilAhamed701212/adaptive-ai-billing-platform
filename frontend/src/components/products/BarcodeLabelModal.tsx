@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Printer, Barcode } from 'lucide-react';
 import { Product } from '@billing/shared';
+import { useCurrencySymbol } from '../../utils/currency';
 
 interface BarcodeLabelModalProps {
   isOpen: boolean;
@@ -9,6 +10,7 @@ interface BarcodeLabelModalProps {
 }
 
 export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ isOpen, onClose, product }) => {
+  const currencySymbol = useCurrencySymbol();
   const [copies, setCopies] = useState<number>(12);
   const [labelSize, setLabelSize] = useState<'standard' | 'compact'>('standard');
 
@@ -22,7 +24,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ isOpen, on
 
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200 }}>
-      <div style={{ background: 'var(--bg-primary)', borderRadius: '12px', width: '600px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 12px 40px rgba(0,0,0,0.3)', overflow: 'hidden' }}>
+      <div style={{ background: 'var(--bg-primary)', borderRadius: '12px', width: 'min(600px, calc(100vw - 2rem))', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 12px 40px rgba(0,0,0,0.3)', overflow: 'hidden' }}>
         
         <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.5rem', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
           <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -82,9 +84,9 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ isOpen, on
                   {product.name}
                 </div>
                 <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#1e293b', margin: '2px 0' }}>
-                  ₹{product.unitPrice.toFixed(2)}
+                  {currencySymbol}{product.unitPrice.toFixed(2)}
                   {product.mrp && product.mrp > product.unitPrice && (
-                    <span style={{ fontSize: '10px', textDecoration: 'line-through', color: '#64748b', marginLeft: '4px' }}>MRP ₹{product.mrp}</span>
+                    <span style={{ fontSize: '10px', textDecoration: 'line-through', color: '#64748b', marginLeft: '4px' }}>MRP {currencySymbol}{product.mrp}</span>
                   )}
                 </div>
                 {/* Barcode visual lines representation */}

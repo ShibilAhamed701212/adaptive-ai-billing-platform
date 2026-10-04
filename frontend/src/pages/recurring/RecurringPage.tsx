@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { apiRequest } from '../../api/client';
+import { apiRequest, fetchAllPages } from '../../api/client';
 import { useToast } from '../../components/common/Toast';
 import { RecurringProfile, Customer, Product } from '@billing/shared';
 import {
@@ -16,12 +16,17 @@ import {
   Clock,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { useCurrencySymbol } from '../../utils/currency';
+import { useTaxSystem } from '../../utils/tax';
+import { TaxRateSelect } from '../../components/common/TaxRateSelect';
 
 interface RecurringPageProps {
   onNavigate?: (path: string) => void;
 }
 
 export const RecurringPage: React.FC<RecurringPageProps> = ({ onNavigate }) => {
+  const currencySymbol = useCurrencySymbol();
+  const { defaultRate } = useTaxSystem();
   const { show } = useToast();
   const [profiles, setProfiles] = useState<RecurringProfile[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -49,7 +54,7 @@ export const RecurringPage: React.FC<RecurringPageProps> = ({ onNavigate }) => {
       unit: 'month',
       quantity: 1,
       unitPrice: 25000,
-      taxRate: 0.18,
+      taxRate: defaultRate,
     },
   ]);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -59,8 +64,8 @@ export const RecurringPage: React.FC<RecurringPageProps> = ({ onNavigate }) => {
     try {
       const [profRes, custRes, prodRes] = await Promise.all([
         apiRequest<RecurringProfile[]>('/recurring'),
-        apiRequest<Customer[]>('/customers'),
-        apiRequest<Product[]>('/products'),
+        fetchAllPages<Customer>('/customers'),
+        fetchAllPages<Product>('/products'),
       ]);
 
       if (profRes.success && profRes.data) setProfiles(profRes.data);
@@ -77,9 +82,19 @@ export const RecurringPage: React.FC<RecurringPageProps> = ({ onNavigate }) => {
     loadData();
   }, []);
 
+  const updateItem = (idx: number, patch: Partial<(typeof items)[number]>) =>
+    setItems((prev) => prev.map((row, i) => (i === idx ? { ...row, ...patch } : row)));
+
   const handleCreateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedCustomerId || !profileName || items.length === 0) return;
+    if (!selectedCustomerId || !profileName || items.length === 0) {
+      show('Choose a customer, name the profile and add at least one item', 'error');
+      return;
+    }
+    if (items.some((it) => !it.description.trim() || !(it.quantity > 0) || it.unitPrice < 0)) {
+      show('Every item needs a description, a quantity above 0 and a non-negative rate', 'error');
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -164,7 +179,7 @@ export const RecurringPage: React.FC<RecurringPageProps> = ({ onNavigate }) => {
         unit: 'unit',
         quantity: 1,
         unitPrice: 0,
-        taxRate: 0.18,
+        taxRate: defaultRate,
       },
     ]);
   };
@@ -283,7 +298,7 @@ export const RecurringPage: React.FC<RecurringPageProps> = ({ onNavigate }) => {
                       </div>
                     </td>
                     <td className="num-mono" style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--accent-primary)' }}>
-                      ₹{Math.round(totalCycleAmount).toLocaleString()}
+                      {currencySymbol}{Math.round(totalCycleAmount).toLocaleString()}
                     </td>
                     <td>
                       <span className={`badge badge-${p.status === 'active' ? 'paid' : 'draft'}`}>
@@ -353,7 +368,7 @@ export const RecurringPage: React.FC<RecurringPageProps> = ({ onNavigate }) => {
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '1rem' }}>
+              <div className="stack-sm" style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '1rem' }}>
                 <div className="form-group">
                   <label className="form-label">Client Account *</label>
                   <select
@@ -386,7 +401,7 @@ export const RecurringPage: React.FC<RecurringPageProps> = ({ onNavigate }) => {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <div className="stack-sm" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div className="form-group">
                   <label className="form-label">Start Date</label>
                   <input
@@ -419,55 +434,33 @@ export const RecurringPage: React.FC<RecurringPageProps> = ({ onNavigate }) => {
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   {items.map((it, idx) => (
-                    <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr auto', gap: '0.5rem', background: '#f8fafc', padding: '0.65rem', borderRadius: '6px' }}>
+                    <div key={idx} className="stack-sm" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr auto', gap: '0.5rem', background: '#f8fafc', padding: '0.65rem', borderRadius: '6px' }}>
                       <input
                         type="text"
                         className="form-input"
                         placeholder="Item description"
                         value={it.description}
-                        onChange={(e) => {
-                          const updated = [...items];
-                          updated[idx].description = e.target.value;
-                          setItems(updated);
-                        }}
+                        onChange={(e) => updateItem(idx, { description: e.target.value })}
                       />
                       <input
                         type="number"
                         className="form-input"
                         placeholder="Qty"
                         value={it.quantity}
-                        onChange={(e) => {
-                          const updated = [...items];
-                          updated[idx].quantity = parseFloat(e.target.value) || 1;
-                          setItems(updated);
-                        }}
+                        onChange={(e) => updateItem(idx, { quantity: e.target.value === '' ? 0 : parseFloat(e.target.value) })}
                       />
                       <input
                         type="number"
                         className="form-input"
                         placeholder="Rate"
                         value={it.unitPrice}
-                        onChange={(e) => {
-                          const updated = [...items];
-                          updated[idx].unitPrice = parseFloat(e.target.value) || 0;
-                          setItems(updated);
-                        }}
+                        onChange={(e) => updateItem(idx, { unitPrice: e.target.value === '' ? 0 : parseFloat(e.target.value) })}
                       />
-                      <select
+                      <TaxRateSelect
                         className="form-select"
                         value={it.taxRate}
-                        onChange={(e) => {
-                          const updated = [...items];
-                          updated[idx].taxRate = parseFloat(e.target.value);
-                          setItems(updated);
-                        }}
-                      >
-                        <option value="0">0%</option>
-                        <option value="0.05">5%</option>
-                        <option value="0.12">12%</option>
-                        <option value="0.18">18%</option>
-                        <option value="0.28">28%</option>
-                      </select>
+                        onChange={(rate) => updateItem(idx, { taxRate: rate })}
+                      />
                       <button
                         type="button"
                         className="btn btn-ghost btn-sm"

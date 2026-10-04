@@ -46,6 +46,30 @@ function AccessDenied({ onNavigate, message }: { onNavigate: (p: string) => void
   );
 }
 
+const ROUTE_MODULES: Array<[string, string]> = [
+  ['/invoices', 'invoices'],
+  ['/credit-notes', 'invoices'],
+  ['/approvals', 'invoices'],
+  ['/recurring', 'subscriptions'],
+  ['/payments', 'payments'],
+  ['/customers', 'customers'],
+  ['/pos', 'pos'],
+  ['/held-bills', 'pos'],
+  ['/products', 'products'],
+  ['/inventory', 'inventory'],
+  ['/purchases', 'purchases'],
+  ['/suppliers', 'suppliers'],
+  ['/returns', 'returns'],
+  ['/shifts', 'shifts'],
+  ['/expenses', 'expenses'],
+  ['/plans', 'plans'],
+  ['/subscriptions', 'subscriptions'],
+  ['/projects', 'projects'],
+  ['/timesheets', 'timesheets'],
+  ['/retainers', 'retainers'],
+  ['/reports', 'reports'],
+];
+
 function RouterShell() {
   const { user, organization, isLoading } = useAuth();
   const [currentPath, setCurrentPath] = useState<string>(() => window.location.pathname || '/dashboard');
@@ -85,6 +109,12 @@ function RouterShell() {
   }
 
   const renderCurrentPage = () => {
+    // Module guards — keys must match Sidebar.tsx and Organization.enabledModules
+    const requiredModule = ROUTE_MODULES.find(([prefix]) => currentPath === prefix || currentPath.startsWith(`${prefix}/`))?.[1];
+    if (requiredModule && organization && !organization.enabledModules?.includes(requiredModule)) {
+      return <AccessDenied onNavigate={navigate} message={`The ${requiredModule} module is not enabled for your organization.`} />;
+    }
+
     if (currentPath === '/organizations/new') {
       return <NewOrganizationPage onNavigate={navigate} />;
     }

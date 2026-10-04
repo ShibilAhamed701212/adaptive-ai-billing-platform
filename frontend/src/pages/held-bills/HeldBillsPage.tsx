@@ -2,8 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../api/client';
 import { PauseCircle, Search, Trash2, Check, Clock, User, AlertCircle, ShoppingCart } from 'lucide-react';
 import { usePOSCart } from '../../context/POSCartContext';
+import { useCurrencySymbol } from '../../utils/currency';
 
 export const HeldBillsPage: React.FC<{ onNavigate: (path: string) => void }> = ({ onNavigate }) => {
+  const currencySymbol = useCurrencySymbol();
   const [heldBills, setHeldBills] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [restoringId, setRestoringId] = useState<string | null>(null);
@@ -107,7 +109,7 @@ export const HeldBillsPage: React.FC<{ onNavigate: (path: string) => void }> = (
                         {bill.customerName && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Cust: {bill.customerName}</div>}
                       </td>
                       <td>{items.length} items</td>
-                      <td style={{ fontWeight: 600 }}>₹{total.toLocaleString()}</td>
+                      <td style={{ fontWeight: 600 }}>{currencySymbol}{total.toLocaleString()}</td>
                       <td style={{ textAlign: 'right' }}>
                         <button className="btn btn-primary btn-sm" onClick={() => restoreBill(bill._id)} disabled={restoringId === bill._id} style={{ marginRight: '0.5rem' }}>
                           <Check size={16} /> {restoringId === bill._id ? 'Restoring...' : 'Restore'}

@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import html2canvas from 'html2canvas';
+import { useCurrencySymbol } from '../../utils/currency';
+import { useAuth } from '../../context/AuthContext';
 
 interface InvoiceDetailPageProps {
   invoiceId: string;
@@ -24,6 +26,8 @@ interface InvoiceDetailPageProps {
 }
 
 export const InvoiceDetailPage: React.FC<InvoiceDetailPageProps> = ({ invoiceId, onNavigate }) => {
+  const currencySymbol = useCurrencySymbol();
+  const { organization } = useAuth();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [templates, setTemplates] = useState<InvoiceTemplate[]>([]);
@@ -291,14 +295,21 @@ export const InvoiceDetailPage: React.FC<InvoiceDetailPageProps> = ({ invoiceId,
           {/* Record Payment Button */}
           {invoice.amountDue > 0 && (
             <button className="btn btn-primary btn-sm" onClick={() => setIsPaymentModalOpen(true)}>
-              <CreditCard size={15} /> Record Payment (₹{invoice.amountDue.toLocaleString()})
+              <CreditCard size={15} /> Record Payment ({currencySymbol}{invoice.amountDue.toLocaleString()})
             </button>
           )}
         </div>
       </div>
 
       {/* Rendered Invoice Paper */}
-      <InvoiceDocument invoice={invoice} template={selectedTemplate} />
+      <InvoiceDocument
+        invoice={invoice}
+        template={selectedTemplate}
+        organizationName={organization?.name}
+        organizationAddress={organization?.settings?.address}
+        organizationGstin={organization?.settings?.gstinOrTaxId}
+        taxSystem={organization?.settings?.taxSystem}
+      />
 
       {/* Record Payment Modal */}
       {isPaymentModalOpen && (
@@ -326,7 +337,7 @@ export const InvoiceDetailPage: React.FC<InvoiceDetailPageProps> = ({ invoiceId,
 
             <form onSubmit={handleRecordPayment}>
               <div className="form-group" style={{ marginBottom: '1rem' }}>
-                <label className="form-label">Payment Amount (₹)</label>
+                <label className="form-label">Payment Amount ({currencySymbol})</label>
                 <input
                   type="number"
                   className="form-input num-mono"
@@ -336,7 +347,7 @@ export const InvoiceDetailPage: React.FC<InvoiceDetailPageProps> = ({ invoiceId,
                   value={paymentAmount}
                   onChange={(e) => setPaymentAmount(parseFloat(e.target.value) || 0)}
                 />
-                <span className="element-desc">Max outstanding: ₹{invoice.amountDue.toLocaleString()}</span>
+                <span className="element-desc">Max outstanding: {currencySymbol}{invoice.amountDue.toLocaleString()}</span>
               </div>
 
               <div className="form-group" style={{ marginBottom: '1rem' }}>
@@ -408,7 +419,7 @@ export const InvoiceDetailPage: React.FC<InvoiceDetailPageProps> = ({ invoiceId,
               </p>
 
               <div className="form-group" style={{ marginBottom: '1rem' }}>
-                <label className="form-label">Adjustment Amount (₹)</label>
+                <label className="form-label">Adjustment Amount ({currencySymbol})</label>
                 <input
                   type="number"
                   className="form-input num-mono"

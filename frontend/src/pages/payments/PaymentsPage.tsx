@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { apiRequest } from '../../api/client';
+import { apiRequest, fetchAllPages } from '../../api/client';
 import { Payment, Invoice } from '@billing/shared';
 import {
   CreditCard,
@@ -14,12 +14,14 @@ import {
   X,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { useCurrencySymbol } from '../../utils/currency';
 
 interface PaymentsPageProps {
   onNavigate?: (path: string) => void;
 }
 
 export const PaymentsPage: React.FC<PaymentsPageProps> = ({ onNavigate }) => {
+  const currencySymbol = useCurrencySymbol();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -45,8 +47,8 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({ onNavigate }) => {
   const loadData = async () => {
     try {
       const [payRes, invRes] = await Promise.all([
-        apiRequest<Payment[]>('/payments'),
-        apiRequest<Invoice[]>('/invoices'),
+        fetchAllPages<Payment>('/payments'),
+        fetchAllPages<Invoice>('/invoices'),
       ]);
 
       if (payRes.success && payRes.data) {
@@ -191,7 +193,7 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({ onNavigate }) => {
             <CheckCircle size={18} color="var(--color-success)" />
           </div>
           <div className="kpi-value" style={{ color: 'var(--color-success)' }}>
-            ₹{totalCollected.toLocaleString()}
+            {currencySymbol}{totalCollected.toLocaleString()}
           </div>
           <div className="kpi-desc">Total confirmed inflow</div>
         </div>
@@ -202,7 +204,7 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({ onNavigate }) => {
             <RotateCcw size={18} color="var(--color-warning)" />
           </div>
           <div className="kpi-value" style={{ color: 'var(--color-warning)' }}>
-            ₹{totalRefunded.toLocaleString()}
+            {currencySymbol}{totalRefunded.toLocaleString()}
           </div>
           <div className="kpi-desc">Disputes & adjustments</div>
         </div>
@@ -313,7 +315,7 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({ onNavigate }) => {
                     )}
                   </td>
                   <td className="num-mono" style={{ fontWeight: 700, fontSize: '0.9rem', color: pay.status === 'refunded' ? 'var(--color-warning)' : 'var(--color-success)' }}>
-                    ₹{pay.amount.toLocaleString()}
+                    {currencySymbol}{pay.amount.toLocaleString()}
                   </td>
                   <td>
                     <span className={`badge badge-${pay.status === 'completed' ? 'paid' : 'draft'}`}>
@@ -380,14 +382,14 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({ onNavigate }) => {
                   <option value="">-- Select Open Invoice --</option>
                   {openInvoices.map((inv) => (
                     <option key={inv._id} value={inv._id}>
-                      #{inv.invoiceNumber} - {inv.customerSnapshot?.name} (Due: ₹{inv.amountDue.toLocaleString()})
+                      #{inv.invoiceNumber} - {inv.customerSnapshot?.name} (Due: {currencySymbol}{inv.amountDue.toLocaleString()})
                     </option>
                   ))}
                 </select>
               </div>
 
               <div className="form-group" style={{ marginBottom: '1rem' }}>
-                <label className="form-label">Payment Amount (₹) *</label>
+                <label className="form-label">Payment Amount ({currencySymbol}) *</label>
                 <input
                   type="number"
                   className="form-input num-mono"
@@ -473,7 +475,7 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({ onNavigate }) => {
 
             <form onSubmit={handleRefund}>
               <div className="form-group" style={{ marginBottom: '1rem' }}>
-                <label className="form-label">Refund Amount (₹)</label>
+                <label className="form-label">Refund Amount ({currencySymbol})</label>
                 <input
                   type="number"
                   className="form-input num-mono"
@@ -483,7 +485,7 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({ onNavigate }) => {
                   value={refundAmount}
                   onChange={(e) => setRefundAmount(parseFloat(e.target.value) || 0)}
                 />
-                <span className="element-desc">Original amount: ₹{selectedPayment.amount.toLocaleString()}</span>
+                <span className="element-desc">Original amount: {currencySymbol}{selectedPayment.amount.toLocaleString()}</span>
               </div>
 
               <div className="form-group" style={{ marginBottom: '1.5rem' }}>

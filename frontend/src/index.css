@@ -278,6 +278,12 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* Data Table */
+/* Used by dashboard tables: scroll horizontally instead of widening the page. */
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+}
+
 .data-table-container {
   width: 100%;
   overflow-x: auto;
@@ -415,6 +421,84 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* Print Isolation Styles */
+/* ---- Responsive app shell ---- */
+.app-sidebar-slot {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  flex-shrink: 0;
+}
+.app-menu-toggle,
+.app-sidebar-backdrop {
+  display: none;
+}
+
+@media (max-width: 960px) {
+  /* Sidebar becomes an off-canvas drawer so content gets the full width. */
+  .app-sidebar-slot {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 300;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+  .app-sidebar-slot.is-open {
+    transform: none;
+    box-shadow: 0 12px 40px rgba(15, 23, 42, 0.25);
+  }
+  .app-sidebar-backdrop.is-open {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 299;
+    background: rgba(15, 23, 42, 0.45);
+  }
+  .app-menu-toggle {
+    display: inline-flex;
+  }
+  .app-navbar {
+    padding: 0 1rem !important;
+  }
+  .app-main {
+    padding: 1rem !important;
+  }
+  /* POS: stack the cart under the product grid instead of a fixed 400px side column. */
+  .pos-layout {
+    flex-direction: column;
+    height: auto !important;
+    margin: -1rem !important;
+  }
+  .pos-product-grid {
+    max-height: 45vh;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) !important;
+  }
+  .pos-cart {
+    width: 100% !important;
+    border-left: none !important;
+    border-top: 1px solid var(--border-color);
+  }
+}
+
+@media (max-width: 960px) {
+  /* Two-pane page layouts (e.g. form + summary) stack vertically. */
+  .stack-md {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 640px) {
+  /* Multi-column form rows stack so each field gets the full width. */
+  .stack-sm {
+    grid-template-columns: 1fr !important;
+  }
+  .app-hide-sm {
+    display: none !important;
+  }
+  .org-switcher-name {
+    max-width: 96px !important;
+  }
+}
+
 @media print {
   html, body {
     background: #ffffff !important;

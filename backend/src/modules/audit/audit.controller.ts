@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
 import { AuditLogModel } from '../../core/audit/audit.service';
+import { parsePagination, containsText } from '../../core/utils/query';
 
 export async function listAuditLogs(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -9,20 +10,20 @@ export async function listAuditLogs(req: Request, res: Response, next: NextFunct
 
     const query: any = { organizationId: new mongoose.Types.ObjectId(orgId) };
 
-    if (action) query.action = action;
-    if (entityType) query.entityType = entityType;
+    if (action) query.action = String(action);
+    if (entityType) query.entityType = String(entityType);
     if (userId) query.userId = new mongoose.Types.ObjectId(String(userId));
     if (search) {
       query.$or = [
-        { userEmail: { $regex: String(search), $options: 'i' } },
-        { action: { $regex: String(search), $options: 'i' } },
-        { entityType: { $regex: String(search), $options: 'i' } },
+        { userEmail: containsText(String(search)) },
+        { action: containsText(String(search)) },
+        { entityType: containsText(String(search)) },
       ];
     }
 
-    const skip = (Number(page) - 1) * Number(limit);
+    const { page: pageNum, limit: pageSize, skip } = parsePagination(page, limit);
     const [logs, total] = await Promise.all([
-      AuditLogModel.find(query).sort({ createdAt: -1 }).skip(skip).limit(Number(limit)),
+      AuditLogModel.find(query).sort({ createdAt: -1 }).skip(skip).limit(pageSize),
       AuditLogModel.countDocuments(query),
     ]);
 
@@ -30,10 +31,10 @@ export async function listAuditLogs(req: Request, res: Response, next: NextFunct
       success: true,
       data: logs,
       pagination: {
-        page: Number(page),
-        limit: Number(limit),
+        page: pageNum,
+        limit: pageSize,
         total,
-        totalPages: Math.ceil(total / Number(limit)),
+        totalPages: Math.ceil(total / pageSize),
       },
     });
   } catch (err) {

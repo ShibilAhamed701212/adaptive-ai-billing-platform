@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest } from '../../api/client';
+import { formatMoney } from '../../utils/currency';
 import { TrendingUp, Users, Repeat, ShieldAlert } from 'lucide-react';
 
 interface SaaSDashboardProps {
@@ -32,7 +33,7 @@ export const SaaSDashboard: React.FC<SaaSDashboardProps> = ({ onNavigate }) => {
             <span className="kpi-title">MRR (Monthly Recurring Revenue)</span>
             <TrendingUp size={18} color="var(--accent-primary)" />
           </div>
-          <div className="kpi-value">{organization?.settings?.currencySymbol || '$'}{(data?.mrr || 0).toLocaleString()}</div>
+          <div className="kpi-value">{formatMoney(data?.mrr, organization?.settings?.currencySymbol || '$', 0)}</div>
           <p className="kpi-desc">Total active monthly subscription value</p>
         </div>
 

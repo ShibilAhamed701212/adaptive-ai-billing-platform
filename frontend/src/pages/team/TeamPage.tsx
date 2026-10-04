@@ -11,6 +11,7 @@ interface TeamMember {
   email: string;
   role: UserRole;
   isActive: boolean;
+  status?: 'active' | 'invited' | 'disabled';
   createdAt?: string;
 }
 
@@ -55,7 +56,12 @@ export const TeamPage: React.FC = () => {
     });
     setSaving(false);
     if (res.success) {
-      show(`${name} was added to the organization`, 'success');
+      show(
+        res.data?.status === 'invited'
+          ? `${email} already has an account. They'll join once they accept the invitation.`
+          : `${name} was added to the organization`,
+        'success'
+      );
       setIsModalOpen(false);
       setName('');
       setEmail('');
@@ -86,10 +92,14 @@ export const TeamPage: React.FC = () => {
     setBusyId(member._id);
     const res = await apiRequest(`/users/${member._id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ isActive: !member.isActive }),
+      // Deactivating a pending invite cancels it.
+      body: JSON.stringify({ isActive: member.status === 'invited' ? false : !member.isActive }),
     });
     setBusyId(null);
-    if (res.success) {
+    if (res.success && member.status === 'invited') {
+      show(`Invitation to ${member.email} cancelled`, 'success');
+      setMembers((prev) => prev.filter((m) => m._id !== member._id));
+    } else if (res.success) {
       show(`${member.name} ${member.isActive ? 'deactivated' : 'reactivated'}`, 'success');
       setMembers((prev) => prev.map((m) => (m._id === member._id ? { ...m, isActive: !member.isActive } : m)));
     } else {
@@ -129,7 +139,7 @@ export const TeamPage: React.FC = () => {
             {loading ? (
               <tr><td colSpan={5} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>Loading team...</td></tr>
             ) : members.length === 0 ? (
-              <tr><td colSpan={5} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>You are the only member. Add your first team member.</td></tr>
+              <tr><td colSpan={5} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>No team members to show.</td></tr>
             ) : (
               members.map((m) => (
                 <tr key={m._id}>
@@ -149,17 +159,21 @@ export const TeamPage: React.FC = () => {
                     </select>
                   </td>
                   <td>
-                    <span className={`badge badge-${m.isActive ? 'paid' : 'draft'}`}>{m.isActive ? 'active' : 'disabled'}</span>
+                    {m.status === 'invited' ? (
+                      <span className="badge badge-sent">invited</span>
+                    ) : (
+                      <span className={`badge badge-${m.isActive ? 'paid' : 'draft'}`}>{m.isActive ? 'active' : 'disabled'}</span>
+                    )}
                   </td>
                   <td style={{ textAlign: 'right' }}>
                     <button
                       className="btn btn-ghost btn-sm"
                       onClick={() => handleToggleActive(m)}
                       disabled={busyId === m._id || m._id === user?._id}
-                      style={{ color: m.isActive ? 'var(--color-danger)' : 'var(--color-success)' }}
-                      title={m.isActive ? 'Deactivate member' : 'Reactivate member'}
+                      style={{ color: m.isActive || m.status === 'invited' ? 'var(--color-danger)' : 'var(--color-success)' }}
+                      title={m.status === 'invited' ? 'Cancel invitation' : m.isActive ? 'Deactivate member' : 'Reactivate member'}
                     >
-                      <Trash2 size={15} /> {m.isActive ? 'Deactivate' : 'Reactivate'}
+                      <Trash2 size={15} /> {m.status === 'invited' ? 'Cancel invite' : m.isActive ? 'Deactivate' : 'Reactivate'}
                     </button>
                   </td>
                 </tr>

@@ -502,7 +502,15 @@ export const InvoiceTemplateCustomizer: React.FC<InvoiceTemplateCustomizerProps>
               <ShieldCheck size={12} /> A4 Print Calibrated
             </span>
           </div>
-          <InvoiceDocument invoice={SAMPLE_INVOICE} template={currentTemplateObject} />
+          <InvoiceDocument
+            invoice={SAMPLE_INVOICE}
+            template={currentTemplateObject}
+            organizationName="Adaptive Billing Corp"
+            organizationEmail="billing@adaptive.io"
+            organizationPhone="+91 98765 43210"
+            organizationAddress={{ street: '100 Tech Park Avenue, Cyber City', city: 'Bengaluru', state: 'Karnataka', postalCode: '560103', country: 'India' }}
+            organizationGstin="29AABCU9603R1ZM"
+          />
         </div>
       </div>
       

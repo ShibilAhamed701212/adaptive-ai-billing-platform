@@ -1,10 +1,17 @@
-import React, { useEffect, useState } from 'react';
-import { apiRequest } from '../../api/client';
+import React, { useEffect, useRef, useState } from 'react';
+import { apiRequest, fetchAllPages } from '../../api/client';
+import { useDebouncedValue } from '../../utils/useDebouncedValue';
 import { Customer } from '@billing/shared';
 import { DynamicFieldRenderer } from '../../components/dynamic-forms/DynamicFieldRenderer';
 import { Plus, Users, Search, X, CheckCircle2, Building2, CreditCard, Award, DollarSign, Edit2, AlertCircle } from 'lucide-react';
+import { useCurrencySymbol } from '../../utils/currency';
+import { useTaxSystem } from '../../utils/tax';
 
 export const CustomersPage: React.FC = () => {
+  const currencySymbol = useCurrencySymbol();
+  const { taxIdLabel, isGst } = useTaxSystem();
+  // 'Udhaar' is the Indian retail term for store credit owed by a customer.
+  const balanceTerm = isGst ? 'Udhaar' : 'Outstanding';
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [search, setSearch] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
@@ -35,23 +42,25 @@ export const CustomersPage: React.FC = () => {
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
+  const debouncedSearch = useDebouncedValue(search);
+  const requestSeq = useRef(0);
+
   const fetchCustomers = async () => {
+    // Ignore responses that arrive after a newer search was issued.
+    const seq = ++requestSeq.current;
     setLoading(true);
-    try {
-      const res = await apiRequest<Customer[]>(`/customers?search=${encodeURIComponent(search)}`);
-      if (res.success && res.data) {
-        setCustomers(res.data);
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
+    const res = await fetchAllPages<Customer>(`/customers?search=${encodeURIComponent(debouncedSearch)}`);
+    if (seq !== requestSeq.current) return;
+    if (res.success && res.data) {
+      setCustomers(res.data);
     }
+    setLoading(false);
   };
 
   useEffect(() => {
     fetchCustomers();
-  }, [search]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch]);
 
   const handleCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,7 +113,7 @@ export const CustomersPage: React.FC = () => {
         body: JSON.stringify({
           amount: Number(paymentAmount),
           method: paymentMethod,
-          notes: paymentNotes || `Udhaar Settlement via ${paymentMethod}`,
+          notes: paymentNotes || `${balanceTerm} settlement via ${paymentMethod}`,
         }),
       });
 
@@ -131,7 +140,7 @@ export const CustomersPage: React.FC = () => {
         <div>
           <h1 style={{ fontSize: '1.75rem', margin: 0 }}>Customer Directory</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', margin: '0.25rem 0 0' }}>
-            Client accounts, GSTIN tax identifiers, Udhaar balances, and Store Credit wallets.
+            Client accounts, {taxIdLabel} tax identifiers, {balanceTerm.toLowerCase()} balances, and store credit wallets.
           </p>
         </div>
 
@@ -148,7 +157,7 @@ export const CustomersPage: React.FC = () => {
             type="text"
             className="form-input"
             style={{ paddingLeft: '2.25rem' }}
-            placeholder="Search by name, company, or GSTIN..."
+            placeholder={`Search by name, company, or ${taxIdLabel}...`}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -166,9 +175,9 @@ export const CustomersPage: React.FC = () => {
               <tr>
                 <th>Customer Name</th>
                 <th>Company / Phone</th>
-                <th>GSTIN</th>
-                <th>Udhaar Balance (₹)</th>
-                <th>Store Credit (₹)</th>
+                <th>{taxIdLabel}</th>
+                <th>{balanceTerm} Balance ({currencySymbol})</th>
+                <th>Store Credit ({currencySymbol})</th>
                 <th>Loyalty Points</th>
                 <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
@@ -199,10 +208,10 @@ export const CustomersPage: React.FC = () => {
                     </td>
                     <td style={{ fontSize: '0.8125rem', fontFamily: 'var(--font-mono)' }}>{c.gstinOrTaxId || 'Unregistered'}</td>
                     <td style={{ fontWeight: 700, fontFamily: 'var(--font-mono)', color: (c.outstandingBalance || 0) > 0 ? 'var(--color-warning)' : 'var(--color-success)' }}>
-                      ₹{(c.outstandingBalance || 0).toLocaleString()}
+                      {currencySymbol}{(c.outstandingBalance || 0).toLocaleString()}
                     </td>
                     <td style={{ fontWeight: 600, fontFamily: 'var(--font-mono)', color: 'var(--accent-primary)' }}>
-                      ₹{(c.storeCreditBalance || 0).toLocaleString()}
+                      {currencySymbol}{(c.storeCreditBalance || 0).toLocaleString()}
                     </td>
                     <td>
                       <span className="badge badge-success" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
@@ -287,7 +296,7 @@ export const CustomersPage: React.FC = () => {
             )}
 
             <form onSubmit={handleCreateCustomer} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <div className="stack-sm" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div className="form-group">
                   <label className="form-label">Contact Person Name *</label>
                   <input
@@ -313,7 +322,7 @@ export const CustomersPage: React.FC = () => {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <div className="stack-sm" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div className="form-group">
                   <label className="form-label">Email Address *</label>
                   <input
@@ -339,17 +348,17 @@ export const CustomersPage: React.FC = () => {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '1rem' }}>
+              <div className="stack-sm" style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '1rem' }}>
                 <div className="form-group">
-                  <label className="form-label">GSTIN / Tax Registration ID</label>
+                  <label className="form-label">{taxIdLabel} / Tax Registration ID</label>
                   <input
                     type="text"
                     className="form-input"
                     value={gstinOrTaxId}
                     onChange={(e) => setGstinOrTaxId(e.target.value)}
-                    placeholder="27AABCT3518Q1ZS"
+                    placeholder={isGst ? '27AABCT3518Q1ZS' : 'Tax registration number'}
                   />
-                  <span className="element-desc">15-digit GSTIN for tax input credits</span>
+                  <span className="element-desc">{isGst ? '15-digit GSTIN for tax input credits' : 'Shown on invoices issued to this customer'}</span>
                 </div>
                 <div className="form-group">
                   <label className="form-label">Billing State *</label>
@@ -415,13 +424,13 @@ export const CustomersPage: React.FC = () => {
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-              <h2 style={{ fontSize: '1.25rem', margin: 0 }}>Record Udhaar Payment</h2>
+              <h2 style={{ fontSize: '1.25rem', margin: 0 }}>Record {balanceTerm} Payment</h2>
               <button className="btn btn-ghost btn-sm" onClick={() => setIsPaymentModalOpen(false)}>
                 <X size={18} />
               </button>
             </div>
             <p className="section-lead">
-              Client: <strong>{selectedCustomerForPayment.name}</strong> • Outstanding: <strong>₹{(selectedCustomerForPayment.outstandingBalance || 0).toLocaleString()}</strong>
+              Client: <strong>{selectedCustomerForPayment.name}</strong> • Outstanding: <strong>{currencySymbol}{(selectedCustomerForPayment.outstandingBalance || 0).toLocaleString()}</strong>
             </p>
 
             {paymentError && (
@@ -443,7 +452,7 @@ export const CustomersPage: React.FC = () => {
 
             <form onSubmit={handleRecordPayment} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div className="form-group">
-                <label className="form-label">Payment Amount (₹) *</label>
+                <label className="form-label">Payment Amount ({currencySymbol}) *</label>
                 <input
                   type="number"
                   required
@@ -481,7 +490,7 @@ export const CustomersPage: React.FC = () => {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '6px' }}>
                 <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Remaining Balance:</span>
                 <span style={{ fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
-                  ₹{Math.max(0, (selectedCustomerForPayment.outstandingBalance || 0) - (Number(paymentAmount) || 0)).toLocaleString()}
+                  {currencySymbol}{Math.max(0, (selectedCustomerForPayment.outstandingBalance || 0) - (Number(paymentAmount) || 0)).toLocaleString()}
                 </span>
               </div>
 

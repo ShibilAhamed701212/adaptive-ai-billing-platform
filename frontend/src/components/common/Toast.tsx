@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { CheckCircle2, AlertTriangle, Info } from 'lucide-react';
+import { LOAD_FAILED_EVENT } from '../../api/client';
 
 type ToastType = 'success' | 'error' | 'info';
 
@@ -33,6 +34,20 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 4500);
   }, []);
+
+  // Surface failed page loads globally; parallel requests failing together show one toast.
+  const lastLoadError = useRef({ message: '', at: 0 });
+  useEffect(() => {
+    const onLoadFailed = (e: Event) => {
+      const message = (e as CustomEvent<string>).detail;
+      const now = Date.now();
+      if (lastLoadError.current.message === message && now - lastLoadError.current.at < 5000) return;
+      lastLoadError.current = { message, at: now };
+      show(message, 'error');
+    };
+    window.addEventListener(LOAD_FAILED_EVENT, onLoadFailed);
+    return () => window.removeEventListener(LOAD_FAILED_EVENT, onLoadFailed);
+  }, [show]);
 
   return (
     <ToastContext.Provider value={{ show }}>

@@ -28,7 +28,7 @@ export async function listRecurringProfiles(req: Request, res: Response, next: N
     const { status, customerId } = req.query;
 
     const query: any = { organizationId: new mongoose.Types.ObjectId(orgId) };
-    if (status) query.status = status;
+    if (status) query.status = String(status);
     if (customerId) query.customerId = new mongoose.Types.ObjectId(String(customerId));
 
     const profiles = await RecurringProfileModel.find(query)

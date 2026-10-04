@@ -12,12 +12,14 @@ import {
   X,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { useCurrencySymbol } from '../../utils/currency';
 
 interface ApprovalsPageProps {
   onNavigate?: (path: string) => void;
 }
 
 export const ApprovalsPage: React.FC<ApprovalsPageProps> = ({ onNavigate }) => {
+  const currencySymbol = useCurrencySymbol();
   const [items, setItems] = useState<ApprovalQueueItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<'pending' | 'approved' | 'rejected'>('pending');
@@ -157,7 +159,7 @@ export const ApprovalsPage: React.FC<ApprovalsPageProps> = ({ onNavigate }) => {
                     </span>
                   </td>
                   <td className="num-mono" style={{ fontWeight: 700, fontSize: '0.9rem' }}>
-                    {item.amount ? `₹${item.amount.toLocaleString()}` : '-'}
+                    {item.amount ? `${currencySymbol}${item.amount.toLocaleString()}` : '-'}
                   </td>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8rem' }}>
@@ -240,7 +242,7 @@ export const ApprovalsPage: React.FC<ApprovalsPageProps> = ({ onNavigate }) => {
               <div style={{ background: '#f8fafc', padding: '0.85rem', borderRadius: '6px', marginBottom: '1rem', fontSize: '0.8125rem' }}>
                 <div><strong>Entity:</strong> {selectedItem.entityType}</div>
                 <div><strong>Reason:</strong> {selectedItem.reason}</div>
-                {selectedItem.amount && <div><strong>Amount:</strong> ₹{selectedItem.amount.toLocaleString()}</div>}
+                {selectedItem.amount && <div><strong>Amount:</strong> {currencySymbol}{selectedItem.amount.toLocaleString()}</div>}
               </div>
 
               <div className="form-group" style={{ marginBottom: '1.5rem' }}>

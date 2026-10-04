@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { ShoppingBag, Plus, Search, CheckCircle2, X, AlertCircle } from 'lucide-react';
-import { apiRequest } from '../../api/client';
+import { apiRequest, fetchAllPages } from '../../api/client';
+import { useCurrencySymbol } from '../../utils/currency';
+import { useTaxSystem } from '../../utils/tax';
 
 interface Supplier {
   _id: string;
@@ -35,6 +37,8 @@ interface Purchase {
 }
 
 export const PurchasesPage = () => {
+  const currencySymbol = useCurrencySymbol();
+  const { label: taxLabel } = useTaxSystem();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -58,13 +62,13 @@ export const PurchasesPage = () => {
     setLoading(true);
     try {
       const [purchasesRes, suppliersRes, productsRes] = await Promise.all([
-        apiRequest('/purchases'),
-        apiRequest('/suppliers'),
-        apiRequest('/products'),
+        fetchAllPages('/purchases'),
+        fetchAllPages('/suppliers'),
+        fetchAllPages('/products'),
       ]);
-      if (purchasesRes.success) setPurchases(purchasesRes.data);
-      if (suppliersRes.success) setSuppliers(suppliersRes.data);
-      if (productsRes.success) setProducts(productsRes.data);
+      if (purchasesRes.success) setPurchases(purchasesRes.data ?? []);
+      if (suppliersRes.success) setSuppliers(suppliersRes.data ?? []);
+      if (productsRes.success) setProducts(productsRes.data ?? []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -189,7 +193,7 @@ export const PurchasesPage = () => {
                     <tr key={p._id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                       <td style={{ padding: '0.75rem', fontFamily: 'var(--font-mono)' }}>{p.purchaseNumber}</td>
                       <td style={{ padding: '0.75rem' }}>{new Date(p.date).toLocaleDateString()}</td>
-                      <td style={{ padding: '0.75rem', fontWeight: 600 }}>₹{p.grandTotal.toLocaleString()}</td>
+                      <td style={{ padding: '0.75rem', fontWeight: 600 }}>{currencySymbol}{p.grandTotal.toLocaleString()}</td>
                       <td style={{ padding: '0.75rem' }}>
                         <span className="badge badge-success">{p.status}</span>
                       </td>
@@ -247,7 +251,7 @@ export const PurchasesPage = () => {
                         <th style={{ padding: '0.5rem' }}>Product</th>
                         <th style={{ padding: '0.5rem' }}>Qty</th>
                         <th style={{ padding: '0.5rem' }}>Cost Price</th>
-                        <th style={{ padding: '0.5rem' }}>GST %</th>
+                        <th style={{ padding: '0.5rem' }}>{taxLabel} %</th>
                         <th style={{ padding: '0.5rem' }}></th>
                       </tr>
                     </thead>
@@ -276,7 +280,7 @@ export const PurchasesPage = () => {
                 )}
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+              <div className="stack-sm" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
                 <div className="form-group">
                   <label className="form-label">Notes</label>
                   <textarea className="form-input" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional notes..."></textarea>
@@ -288,7 +292,7 @@ export const PurchasesPage = () => {
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem', fontWeight: 600, fontSize: '1.125rem' }}>
                     <span>Grand Total:</span>
-                    <span>₹{grandTotal.toFixed(2)}</span>
+                    <span>{currencySymbol}{grandTotal.toFixed(2)}</span>
                   </div>
                 </div>
               </div>

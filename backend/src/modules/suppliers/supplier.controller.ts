@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
 import { SupplierModel } from '../../models/Supplier.model';
 import { logAuditEvent } from '../../core/audit/audit.service';
+import { parsePagination, containsText } from '../../core/utils/query';
 
 export async function listSuppliers(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -12,17 +13,17 @@ export async function listSuppliers(req: Request, res: Response, next: NextFunct
     if (search) {
       const s = String(search).trim();
       query.$or = [
-        { name: { $regex: s, $options: 'i' } },
-        { email: { $regex: s, $options: 'i' } },
-        { phone: { $regex: s, $options: 'i' } },
-        { companyName: { $regex: s, $options: 'i' } },
-        { gstinOrTaxId: { $regex: s, $options: 'i' } },
+        { name: containsText(s) },
+        { email: containsText(s) },
+        { phone: containsText(s) },
+        { companyName: containsText(s) },
+        { gstinOrTaxId: containsText(s) },
       ];
     }
 
-    const skip = (Number(page) - 1) * Number(limit);
+    const { page: pageNum, limit: pageSize, skip } = parsePagination(page, limit);
     const [suppliers, total] = await Promise.all([
-      SupplierModel.find(query).sort({ name: 1 }).skip(skip).limit(Number(limit)),
+      SupplierModel.find(query).sort({ name: 1 }).skip(skip).limit(pageSize),
       SupplierModel.countDocuments(query),
     ]);
 
@@ -30,10 +31,10 @@ export async function listSuppliers(req: Request, res: Response, next: NextFunct
       success: true,
       data: suppliers,
       pagination: {
-        page: Number(page),
-        limit: Number(limit),
+        page: pageNum,
+        limit: pageSize,
         total,
-        totalPages: Math.ceil(total / Number(limit)),
+        totalPages: Math.ceil(total / pageSize),
       },
     });
   } catch (err) {

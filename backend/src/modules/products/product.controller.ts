@@ -4,6 +4,7 @@ import { CustomFieldModel } from '../../models/CustomField.model';
 import { validateCustomFields } from '../../dynamic-engine/custom-fields/field-validator';
 import { logAuditEvent } from '../../core/audit/audit.service';
 import mongoose from 'mongoose';
+import { parsePagination, containsText } from '../../core/utils/query';
 
 export async function listProducts(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -12,24 +13,24 @@ export async function listProducts(req: Request, res: Response, next: NextFuncti
 
     const query: any = { organizationId: new mongoose.Types.ObjectId(orgId), isActive: true };
     if (type) {
-      query.type = type;
+      query.type = String(type);
     }
     if (search) {
       const searchStr = String(search).trim();
       query.$or = [
-        { name: { $regex: searchStr, $options: 'i' } },
-        { sku: { $regex: searchStr, $options: 'i' } },
-        { description: { $regex: searchStr, $options: 'i' } },
-        { barcode: { $regex: searchStr, $options: 'i' } },
+        { name: containsText(searchStr) },
+        { sku: containsText(searchStr) },
+        { description: containsText(searchStr) },
+        { barcode: containsText(searchStr) },
         { barcodes: searchStr },
-        { category: { $regex: searchStr, $options: 'i' } },
-        { brand: { $regex: searchStr, $options: 'i' } },
+        { category: containsText(searchStr) },
+        { brand: containsText(searchStr) },
       ];
     }
 
-    const skip = (Number(page) - 1) * Number(limit);
+    const { page: pageNum, limit: pageSize, skip } = parsePagination(page, limit);
     const [products, total] = await Promise.all([
-      ProductModel.find(query).sort({ name: 1 }).skip(skip).limit(Number(limit)),
+      ProductModel.find(query).sort({ name: 1 }).skip(skip).limit(pageSize),
       ProductModel.countDocuments(query),
     ]);
 
@@ -37,10 +38,10 @@ export async function listProducts(req: Request, res: Response, next: NextFuncti
       success: true,
       data: products,
       pagination: {
-        page: Number(page),
-        limit: Number(limit),
+        page: pageNum,
+        limit: pageSize,
         total,
-        totalPages: Math.ceil(total / Number(limit)),
+        totalPages: Math.ceil(total / pageSize),
         hasMore: skip + products.length < total,
       },
     });

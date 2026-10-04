@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Receipt, Plus, DollarSign, Tag, FileText, Calendar, RefreshCw } from 'lucide-react';
-import { apiRequest } from '../../api/client';
+import { apiRequest, fetchAllPages } from '../../api/client';
 
 export const ExpensesPage: React.FC = () => {
   const [expenses, setExpenses] = useState<any[]>([]);
@@ -16,7 +16,7 @@ export const ExpensesPage: React.FC = () => {
     try {
       setLoading(true);
       setError('');
-      const res = await apiRequest('/expenses');
+      const res = await fetchAllPages('/expenses');
       setExpenses(res.data || []);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch expenses');

@@ -68,6 +68,12 @@ export function errorHandler(
     return;
   }
 
+  // 3b. Malformed id passed to new ObjectId(...) by a handler
+  if (err?.name === 'BSONError') {
+    res.status(400).json({ success: false, error: { code: 'INVALID_ID', message: 'Invalid identifier format' } });
+    return;
+  }
+
   // 4. MongoDB duplicate key error (E11000)
   if (err.code === 11000 || err.code === 11001) {
     const keyPattern = err.keyPattern ? Object.keys(err.keyPattern).join(', ') : 'unknown';

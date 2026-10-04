@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Sparkles, Bot, Send, X, ArrowRight, CheckCircle2, TrendingUp, AlertTriangle, Loader2 } from 'lucide-react';
 import { apiRequest } from '../../api/client';
+import { useCurrencySymbol } from '../../utils/currency';
 import { InvoiceCopilotDraft, AskBusinessQueryResponse } from '@billing/shared';
 
 interface AiCopilotDrawerProps {
@@ -14,6 +15,7 @@ export const AiCopilotDrawer: React.FC<AiCopilotDrawerProps> = ({
   onClose,
   onApplyDraftToInvoice,
 }) => {
+  const currencySymbol = useCurrencySymbol();
   const [activeTab, setActiveTab] = useState<'copilot' | 'ask'>('copilot');
 
   // Invoice Copilot State
@@ -331,7 +333,7 @@ export const AiCopilotDrawer: React.FC<AiCopilotDrawerProps> = ({
                         <span style={{ fontWeight: 500 }}>
                           {item.quantity}x {item.productName}
                         </span>
-                        <span style={{ fontWeight: 600, fontFamily: 'var(--font-mono)' }}>₹{(item.quantity * item.unitPrice).toLocaleString()}</span>
+                        <span style={{ fontWeight: 600, fontFamily: 'var(--font-mono)' }}>{currencySymbol}{(item.quantity * item.unitPrice).toLocaleString()}</span>
                       </div>
                     ))}
                   </div>
@@ -437,7 +439,7 @@ export const AiCopilotDrawer: React.FC<AiCopilotDrawerProps> = ({
                             {item.response.chartData.labels.map((lbl, lIdx) => (
                               <div key={lbl} style={{ fontSize: '0.75rem', background: '#f8fafc', padding: '0.25rem 0.5rem', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
                                 <span style={{ color: 'var(--text-muted)' }}>{lbl}:</span>{' '}
-                                <strong style={{ fontFamily: 'var(--font-mono)' }}>₹{(item.response.chartData?.datasets[0]?.data[lIdx] || 0).toLocaleString()}</strong>
+                                <strong style={{ fontFamily: 'var(--font-mono)' }}>{currencySymbol}{(item.response.chartData?.datasets[0]?.data[lIdx] || 0).toLocaleString()}</strong>
                               </div>
                             ))}
                           </div>

@@ -12,6 +12,7 @@ import mongoose from 'mongoose';
 import { generateInvoicePdf } from './invoice.pdf';
 import { sendInvoiceEmail } from './invoice.email';
 import { reserveInvoiceNumber } from '../../billing-engine/next-invoice-number';
+import { parsePagination, containsText } from '../../core/utils/query';
 
 const VALID_INVOICE_STATUSES = ['draft', 'pending_approval', 'approved', 'sent', 'partially_paid', 'paid', 'overdue', 'void', 'cancelled'] as const;
 
@@ -51,22 +52,22 @@ export async function listInvoices(req: Request, res: Response, next: NextFuncti
 
     const query: any = { organizationId: new mongoose.Types.ObjectId(orgId) };
     if (status) {
-      query.status = status;
+      query.status = String(status);
     }
     if (customerId) {
       query.customerId = new mongoose.Types.ObjectId(String(customerId));
     }
     if (search) {
       query.$or = [
-        { invoiceNumber: { $regex: String(search), $options: 'i' } },
-        { 'customerSnapshot.name': { $regex: String(search), $options: 'i' } },
-        { 'customerSnapshot.companyName': { $regex: String(search), $options: 'i' } },
+        { invoiceNumber: containsText(String(search)) },
+        { 'customerSnapshot.name': containsText(String(search)) },
+        { 'customerSnapshot.companyName': containsText(String(search)) },
       ];
     }
 
-    const skip = (Number(page) - 1) * Number(limit);
+    const { page: pageNum, limit: pageSize, skip } = parsePagination(page, limit);
     const [invoices, total] = await Promise.all([
-      InvoiceModel.find(query).sort({ createdAt: -1 }).skip(skip).limit(Number(limit)),
+      InvoiceModel.find(query).sort({ createdAt: -1 }).skip(skip).limit(pageSize),
       InvoiceModel.countDocuments(query),
     ]);
 
@@ -74,10 +75,10 @@ export async function listInvoices(req: Request, res: Response, next: NextFuncti
       success: true,
       data: invoices,
       pagination: {
-        page: Number(page),
-        limit: Number(limit),
+        page: pageNum,
+        limit: pageSize,
         total,
-        totalPages: Math.ceil(total / Number(limit)),
+        totalPages: Math.ceil(total / pageSize),
         hasMore: skip + invoices.length < total,
       },
     });

@@ -4,6 +4,7 @@ import { CustomFieldModel } from '../../models/CustomField.model';
 import { validateCustomFields } from '../../dynamic-engine/custom-fields/field-validator';
 import { logAuditEvent } from '../../core/audit/audit.service';
 import mongoose from 'mongoose';
+import { parsePagination, containsText } from '../../core/utils/query';
 
 export async function listCustomers(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -13,16 +14,16 @@ export async function listCustomers(req: Request, res: Response, next: NextFunct
     const query: any = { organizationId: new mongoose.Types.ObjectId(orgId) };
     if (search) {
       query.$or = [
-        { name: { $regex: String(search), $options: 'i' } },
-        { email: { $regex: String(search), $options: 'i' } },
-        { gstinOrTaxId: { $regex: String(search), $options: 'i' } },
-        { companyName: { $regex: String(search), $options: 'i' } },
+        { name: containsText(String(search)) },
+        { email: containsText(String(search)) },
+        { gstinOrTaxId: containsText(String(search)) },
+        { companyName: containsText(String(search)) },
       ];
     }
 
-    const skip = (Number(page) - 1) * Number(limit);
+    const { page: pageNum, limit: pageSize, skip } = parsePagination(page, limit);
     const [customers, total] = await Promise.all([
-      CustomerModel.find(query).sort({ createdAt: -1 }).skip(skip).limit(Number(limit)),
+      CustomerModel.find(query).sort({ createdAt: -1 }).skip(skip).limit(pageSize),
       CustomerModel.countDocuments(query),
     ]);
 
@@ -30,10 +31,10 @@ export async function listCustomers(req: Request, res: Response, next: NextFunct
       success: true,
       data: customers,
       pagination: {
-        page: Number(page),
-        limit: Number(limit),
+        page: pageNum,
+        limit: pageSize,
         total,
-        totalPages: Math.ceil(total / Number(limit)),
+        totalPages: Math.ceil(total / pageSize),
         hasMore: skip + customers.length < total,
       },
     });

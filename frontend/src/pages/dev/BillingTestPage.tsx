@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { apiRequest } from '../../api/client';
+import { apiRequest, fetchAllPages } from '../../api/client';
 import { Activity, Play, CheckCircle2, XCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -22,9 +22,9 @@ export const BillingTestPage: React.FC = () => {
     };
 
     await runScenario('Tenant Isolation: Fetch Customers', async () => {
-      const res = await apiRequest('/customers');
+      const res = await fetchAllPages('/customers');
       const isArray = Array.isArray(res.data);
-      return { expected: 'Array of customers', actual: isArray ? `Array[${res.data.length}]` : typeof res.data, status: isArray && res.success };
+      return { expected: 'Array of customers', actual: isArray ? `Array[${res.data!.length}]` : typeof res.data, status: isArray && res.success };
     });
 
     await runScenario('Billing Engine: Reject missing invoice', async () => {

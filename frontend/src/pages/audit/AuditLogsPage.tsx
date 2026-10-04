@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { apiRequest } from '../../api/client';
+import { apiRequest, fetchAllPages } from '../../api/client';
 import { Shield, Search, Filter, Clock, User, FileText, ChevronDown, ChevronRight } from 'lucide-react';
 
 interface AuditLog {
@@ -24,7 +24,7 @@ export const AuditLogsPage: React.FC = () => {
 
   const loadLogs = async () => {
     try {
-      const res = await apiRequest<AuditLog[]>('/audit-logs');
+      const res = await fetchAllPages<AuditLog>('/audit-logs');
       if (res.success && res.data) {
         setLogs(res.data);
       }

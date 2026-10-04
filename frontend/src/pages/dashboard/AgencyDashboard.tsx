@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest } from '../../api/client';
+import { formatMoney } from '../../utils/currency';
 import { Briefcase, Clock4, Banknote, ShieldCheck } from 'lucide-react';
 
 interface AgencyDashboardProps {
@@ -50,7 +51,7 @@ export const AgencyDashboard: React.FC<AgencyDashboardProps> = ({ onNavigate }) 
             <span className="kpi-title">Outstanding Invoices</span>
             <Banknote size={18} color="var(--color-danger)" />
           </div>
-          <div className="kpi-value">{organization?.settings?.currencySymbol || '€'}{(data?.outstandingInvoices || 0).toLocaleString()}</div>
+          <div className="kpi-value">{formatMoney(data?.outstandingInvoices, organization?.settings?.currencySymbol || '€', 0)}</div>
           <p className="kpi-desc">Awaiting client payment</p>
         </div>
 

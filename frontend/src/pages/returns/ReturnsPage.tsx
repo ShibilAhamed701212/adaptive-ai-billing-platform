@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { RotateCcw, Search, CheckCircle2, X, AlertCircle } from 'lucide-react';
-import { apiRequest } from '../../api/client';
+import { apiRequest, fetchAllPages } from '../../api/client';
+import { useCurrencySymbol } from '../../utils/currency';
 
 interface InvoiceItem {
   productId: string;
@@ -37,6 +38,7 @@ interface ReturnRecord {
 }
 
 export const ReturnsPage = () => {
+  const currencySymbol = useCurrencySymbol();
   const [returns, setReturns] = useState<ReturnRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -65,7 +67,7 @@ export const ReturnsPage = () => {
 
   const fetchCatalog = async () => {
     try {
-      const res = await apiRequest('/products?limit=100');
+      const res = await fetchAllPages('/products');
       if (res.success && res.data) setCatalogProducts(res.data);
     } catch {
       // ignore
@@ -75,8 +77,8 @@ export const ReturnsPage = () => {
   const fetchReturns = async () => {
     setLoading(true);
     try {
-      const res = await apiRequest('/returns');
-      if (res.success) setReturns(res.data);
+      const res = await fetchAllPages('/returns');
+      if (res.success) setReturns(res.data ?? []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -92,7 +94,7 @@ export const ReturnsPage = () => {
     try {
       // Endpoint to get invoice by ID or Number. Let's assume we can fetch by querying GET /invoices?search=...
       // Usually there is a GET /invoices/:id but we'll try GET /invoices
-      const res = await apiRequest(`/invoices?search=${searchInvoiceId}`);
+      const res = await apiRequest(`/invoices?search=${encodeURIComponent(searchInvoiceId.trim())}`);
       if (res.success && res.data.length > 0) {
         // Find exact match or take first
         const invoice = res.data.find((i: any) => i.invoiceNumber === searchInvoiceId || i._id === searchInvoiceId) || res.data[0];
@@ -213,7 +215,7 @@ export const ReturnsPage = () => {
                     <tr key={r._id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                       <td style={{ padding: '0.75rem', fontFamily: 'var(--font-mono)' }}>{r.returnNumber}</td>
                       <td style={{ padding: '0.75rem' }}>{new Date(r.date).toLocaleDateString()}</td>
-                      <td style={{ padding: '0.75rem', fontWeight: 600, color: 'var(--color-danger)' }}>-₹{r.totalRefundAmount.toLocaleString()}</td>
+                      <td style={{ padding: '0.75rem', fontWeight: 600, color: 'var(--color-danger)' }}>-{currencySymbol}{r.totalRefundAmount.toLocaleString()}</td>
                       <td style={{ padding: '0.75rem', textTransform: 'capitalize' }}>{r.refundMethod.replace('_', ' ')}</td>
                     </tr>
                   ))
@@ -283,7 +285,7 @@ export const ReturnsPage = () => {
                 <div style={{ background: 'var(--bg-subtle)', padding: '1rem', borderRadius: 'var(--radius-md)', marginBottom: '1.5rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                     <span style={{ fontWeight: 600 }}>Invoice: {foundInvoice.invoiceNumber}</span>
-                    <span style={{ fontWeight: 600 }}>Total: ₹{foundInvoice.grandTotal.toLocaleString()}</span>
+                    <span style={{ fontWeight: 600 }}>Total: {currencySymbol}{foundInvoice.grandTotal.toLocaleString()}</span>
                   </div>
                   <button type="button" className="btn btn-ghost btn-sm" style={{ padding: 0 }} onClick={() => setFoundInvoice(null)}>
                     Change Invoice
@@ -313,7 +315,7 @@ export const ReturnsPage = () => {
                           <td style={{ padding: '0.5rem' }}>{item.name}</td>
                           <td style={{ padding: '0.5rem' }}>{item.maxQuantity}</td>
                           <td style={{ padding: '0.5rem', fontFamily: 'var(--font-mono)' }}>
-                            ₹{foundInvoice.items.find(i => String(i.productId || (i as any)._id) === String(item.productId))?.unitPrice || 0}
+                            {currencySymbol}{foundInvoice.items.find(i => String(i.productId || (i as any)._id) === String(item.productId))?.unitPrice || 0}
                           </td>
                           <td style={{ padding: '0.5rem' }}>
                             <input 
@@ -356,7 +358,7 @@ export const ReturnsPage = () => {
                       >
                         <option value="">-- Add replacement product from catalog --</option>
                         {catalogProducts.map(p => (
-                          <option key={p._id} value={p._id}>{p.name} ({p.sku}) - ₹{p.unitPrice} [Stock: {p.stockQuantity ?? 'N/A'}]</option>
+                          <option key={p._id} value={p._id}>{p.name} ({p.sku}) - {currencySymbol}{p.unitPrice} [Stock: {p.stockQuantity ?? 'N/A'}]</option>
                         ))}
                       </select>
                     </div>
@@ -376,7 +378,7 @@ export const ReturnsPage = () => {
                           {exchangeItems.map((ex, idx) => (
                             <tr key={idx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                               <td style={{ padding: '0.5rem' }}>{ex.name}</td>
-                              <td style={{ padding: '0.5rem' }}>₹{ex.unitPrice}</td>
+                              <td style={{ padding: '0.5rem' }}>{currencySymbol}{ex.unitPrice}</td>
                               <td style={{ padding: '0.5rem' }}>
                                 <input
                                   type="number"
@@ -390,7 +392,7 @@ export const ReturnsPage = () => {
                                   }}
                                 />
                               </td>
-                              <td style={{ padding: '0.5rem', fontWeight: 600 }}>₹{(ex.unitPrice * ex.quantity).toLocaleString()}</td>
+                              <td style={{ padding: '0.5rem', fontWeight: 600 }}>{currencySymbol}{(ex.unitPrice * ex.quantity).toLocaleString()}</td>
                               <td style={{ padding: '0.5rem', textAlign: 'right' }}>
                                 <button
                                   type="button"
@@ -421,19 +423,19 @@ export const ReturnsPage = () => {
                   return (
                     <div style={{ background: '#f1f5f9', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div>
-                        <div style={{ fontSize: '0.85rem', color: '#64748b' }}>Returned Item Value: ₹{returnSubtotal.toLocaleString()}</div>
+                        <div style={{ fontSize: '0.85rem', color: '#64748b' }}>Returned Item Value: {currencySymbol}{returnSubtotal.toLocaleString()}</div>
                         {activeTab === 'exchange' && (
-                          <div style={{ fontSize: '0.85rem', color: '#64748b' }}>Replacement Items Value: ₹{replacementSubtotal.toLocaleString()}</div>
+                          <div style={{ fontSize: '0.85rem', color: '#64748b' }}>Replacement Items Value: {currencySymbol}{replacementSubtotal.toLocaleString()}</div>
                         )}
                       </div>
                       <div style={{ textAlign: 'right' }}>
                         {activeTab === 'return' ? (
                           <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--color-danger)' }}>
-                            Refund: ₹{returnSubtotal.toLocaleString()}
+                            Refund: {currencySymbol}{returnSubtotal.toLocaleString()}
                           </div>
                         ) : (
                           <div style={{ fontSize: '1.1rem', fontWeight: 700, color: netDifference > 0 ? 'var(--color-success)' : netDifference < 0 ? 'var(--color-danger)' : 'var(--text-primary)' }}>
-                            {netDifference > 0 ? `Customer Pays Difference: ₹${netDifference.toLocaleString()}` : netDifference < 0 ? `Refund Difference: ₹${Math.abs(netDifference).toLocaleString()}` : 'Even Exchange (₹0 Difference)'}
+                            {netDifference > 0 ? `Customer Pays Difference: ${currencySymbol}${netDifference.toLocaleString()}` : netDifference < 0 ? `Refund Difference: ${currencySymbol}${Math.abs(netDifference).toLocaleString()}` : `Even Exchange (${currencySymbol}0 Difference)`}
                           </div>
                         )}
                       </div>
@@ -441,7 +443,7 @@ export const ReturnsPage = () => {
                   );
                 })()}
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+                <div className="stack-sm" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
                   <div className="form-group">
                     <label className="form-label">Reason</label>
                     <select className="form-select" value={globalReason} onChange={(e) => setGlobalReason(e.target.value)}>

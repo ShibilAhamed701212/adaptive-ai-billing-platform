@@ -1,6 +1,7 @@
 ﻿import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest } from '../../api/client';
+import { formatMoney } from '../../utils/currency';
 import { TrendingUp, CreditCard, AlertTriangle, Users, Activity } from 'lucide-react';
 
 interface GeneralDashboardProps {
@@ -49,8 +50,8 @@ export const GeneralDashboard: React.FC<GeneralDashboardProps> = ({ onNavigate }
     };
   }, []);
 
-  const symbol = organization?.settings?.currencySymbol || 'â‚¹';
-  const fmt = (n: number | undefined) => symbol + (n || 0).toLocaleString();
+  const symbol = organization?.settings?.currencySymbol || '₹';
+  const fmt = (n: number | undefined) => formatMoney(n, symbol, 0);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -137,7 +138,7 @@ export const GeneralDashboard: React.FC<GeneralDashboardProps> = ({ onNavigate }
                     <td style={{ color: 'var(--text-muted)' }}>{p.sku || '-'}</td>
                     <td style={{ textAlign: 'right', fontWeight: 600 }}>{p.unitsSold}</td>
                     <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--color-success)' }}>
-                      {symbol}{p.totalRevenue.toLocaleString()}
+                      {formatMoney(p.totalRevenue, symbol)}
                     </td>
                   </tr>
                 ))

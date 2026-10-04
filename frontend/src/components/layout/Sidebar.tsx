@@ -44,6 +44,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, onNavigate }) => 
     ],
   };
 
+  // Invoice follow-up tools shared by every business type that bills with invoices.
+  const creditNotesItem: MenuItem = { label: 'Credit Notes', desc: 'Rebates against invoices', path: '/credit-notes', icon: FileMinus, module: 'invoices' };
+  const approvalsItem: MenuItem = { label: 'Approval Queue', desc: 'Manager review queue', path: '/approvals', icon: CheckSquare, module: 'invoices', roles: ['admin', 'manager'] };
+
   const analyticsGroup: MenuGroup = {
     title: 'Analytics',
     items: [
@@ -78,11 +82,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, onNavigate }) => 
           { label: 'Invoices', desc: 'B2B billing', path: '/invoices', icon: FileText, module: 'invoices' },
           { label: 'Payments', desc: 'Reconciliations', path: '/payments', icon: CreditCard, module: 'payments' },
           { label: 'Customers', desc: 'Loyalty & profiles', path: '/customers', icon: Users, module: 'customers' },
+          creditNotesItem,
+          approvalsItem,
         ],
       },
       {
         title: 'Operations',
         items: [
+          { label: 'Returns & Refunds', desc: 'Restock & exchange', path: '/returns', icon: Undo2, module: 'returns' },
           { label: 'Shifts', desc: 'Cash drawer tracking', path: '/shifts', icon: Clock4, module: 'shifts' },
           { label: 'Expenses', desc: 'Store operational costs', path: '/expenses', icon: Banknote, module: 'expenses' },
         ],
@@ -105,7 +112,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, onNavigate }) => 
         title: 'Billing & Usage',
         items: [
           { label: 'Invoices', desc: 'Recurring billing', path: '/invoices', icon: FileText, module: 'invoices' },
+          { label: 'Recurring Profiles', desc: 'Automated invoicing', path: '/recurring', icon: Repeat, module: 'subscriptions' },
           { label: 'Payments', desc: 'Card processing', path: '/payments', icon: CreditCard, module: 'payments' },
+          creditNotesItem,
+          approvalsItem,
         ],
       },
       analyticsGroup,
@@ -129,6 +139,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, onNavigate }) => 
           { label: 'Retainers', desc: 'Prepaid balances', path: '/retainers', icon: ShieldCheck, module: 'retainers' },
           { label: 'Payments', desc: 'Receivables', path: '/payments', icon: CreditCard, module: 'payments' },
           { label: 'Expenses', desc: 'Reimbursables', path: '/expenses', icon: Banknote, module: 'expenses' },
+          creditNotesItem,
+          approvalsItem,
         ],
       },
       analyticsGroup,
@@ -149,6 +161,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, onNavigate }) => 
           { label: 'Invoices', desc: 'Create & issue', path: '/invoices', icon: FileText, module: 'invoices' },
           { label: 'Payments', desc: 'Reconciliations', path: '/payments', icon: CreditCard, module: 'payments' },
           { label: 'Customers', desc: 'Client profiles', path: '/customers', icon: Users, module: 'customers' },
+          creditNotesItem,
+          approvalsItem,
         ],
       },
       {
