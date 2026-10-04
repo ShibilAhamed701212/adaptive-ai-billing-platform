@@ -299,6 +299,36 @@ export async function refundPayment(req: Request, res: Response, next: NextFunct
 
     const refundAmount = Math.round(requested * 100) / 100;
 
+    // Atomic claim (concurrency guard): the refundable balance is re-checked SERVER-SIDE at
+    // write time, so two concurrent refunds can never both pass the in-memory check above and
+    // refund (and re-open on the customer's account) more than the payment was worth.
+    const refundNote = `Refunded ₹${refundAmount}: ${reason || 'N/A'}`;
+    const claimed = await PaymentModel.findOneAndUpdate(
+      {
+        _id: payment._id,
+        organizationId: new mongoose.Types.ObjectId(orgId),
+        status: 'completed',
+        $expr: { $lte: [{ $add: [{ $ifNull: ['$refundedAmount', 0] }, refundAmount] }, { $add: ['$amount', 0.001] }] },
+      },
+      [
+        { $set: { refundedAmount: { $round: [{ $add: [{ $ifNull: ['$refundedAmount', 0] }, refundAmount] }, 2] } } },
+        {
+          $set: {
+            status: { $cond: [{ $gte: ['$refundedAmount', { $subtract: ['$amount', 0.001] }] }, 'refunded', 'completed'] },
+            notes: { $concat: [{ $cond: [{ $gt: [{ $strLenCP: { $ifNull: ['$notes', ''] } }, 0] }, { $concat: ['$notes', ' | '] }, ''] }, { $literal: refundNote }] },
+          },
+        },
+      ],
+      { new: true }
+    );
+    if (!claimed) {
+      res.status(409).json({
+        success: false,
+        error: { code: 'CONCURRENT_REFUND_CONFLICT', message: 'Payment was concurrently refunded; refund not applied' },
+      });
+      return;
+    }
+
     // Tenant scoping fix (BUG-10): the invoice must be looked up scoped to the caller's
     // organization — findById alone could mutate another tenant's invoice document.
     const invoice = await InvoiceModel.findOne({
@@ -317,11 +347,6 @@ export async function refundPayment(req: Request, res: Response, next: NextFunct
       });
     }
 
-    payment.refundedAmount = Math.round((alreadyRefunded + refundAmount) * 100) / 100;
-    payment.status = payment.refundedAmount >= payment.amount - 0.001 ? 'refunded' : 'completed';
-    payment.notes = (payment.notes ? `${payment.notes} | ` : '') + `Refunded ₹${refundAmount}: ${reason || 'N/A'}`;
-    await payment.save();
-
     await logAuditEvent({
       organizationId: orgId,
       userId: req.tenant!.userId,
@@ -336,7 +361,7 @@ export async function refundPayment(req: Request, res: Response, next: NextFunct
       success: true,
       message: `Successfully refunded ₹${refundAmount.toLocaleString()}`,
       data: {
-        payment,
+        payment: claimed,
         invoice: invoice
           ? {
               _id: invoice._id,

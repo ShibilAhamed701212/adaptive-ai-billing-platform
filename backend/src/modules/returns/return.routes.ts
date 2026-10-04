@@ -8,6 +8,6 @@ router.use(tenantMiddleware);
 router.use(requireModule('returns'));
 
 router.get('/', listReturns);
-router.post('/', requireRole(['admin', 'manager', 'cashier']), processReturn);
+router.post('/', requireRole(['admin', 'manager', 'sales']), processReturn);
 
 export default router;
