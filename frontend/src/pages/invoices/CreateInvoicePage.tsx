@@ -164,6 +164,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
         unitPrice: prod.unitPrice,
         taxRate: prod.taxRate,
         hsnSacCode: prod.hsnSacCode,
+        discountAmount: 0,
       };
       return updated;
     });

@@ -7,3 +7,6 @@ uploads
 *.log
 dist
 */dist
+.env
+.env.*
+!.env.example

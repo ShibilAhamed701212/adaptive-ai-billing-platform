@@ -26,7 +26,7 @@ export async function connectDB(): Promise<void> {
 
   try {
     await mongoose.connect(ENV.MONGODB_URI, {
-      serverSelectionTimeoutMS: 2500,
+      serverSelectionTimeoutMS: 10000,
     });
   } catch (error: any) {
     console.warn(`⚠️ [Database] Could not connect to MongoDB at ${ENV.MONGODB_URI}: ${error.message}`);
