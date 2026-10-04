@@ -209,8 +209,27 @@ Playwright specs in `frontend/e2e` need the frontend, API and seeded demo data r
 
 ## Deployment
 
-- **Docker**: `docker build -t adaptive-billing .` produces an image that serves the API and the built SPA on port 10000 as a non-root user. Provide the production variables above.
-- **Render**: `render.yaml` defines a static site for the SPA and a Docker web service for the API with `JWT_SECRET` generated and `MONGODB_URI`/SMTP values set in the dashboard. `frontend/.env.production` and the blueprint point at `https://adaptive-billing-api.onrender.com`; change both if you deploy under another name.
+### Docker (production image)
+
+The image serves the API and the built SPA from one origin on port 10000, runs as the non-root `node` user, and refuses to start without a strong `JWT_SECRET`.
+
+Run the image and the replica-set MongoDB together with Docker Compose:
+```bash
+export JWT_SECRET=$(node -e "console.log(require('crypto').randomBytes(48).toString('hex'))")
+docker compose --profile app up -d --build --wait
+node scripts/docker-smoke-test.mjs          # optional: end-to-end checks against http://localhost:10000
+```
+Open http://localhost:10000 and create an organization (production mode never creates demo accounts). Stop with `docker compose --profile app down` (add `-v` to delete the data volume).
+
+Notes:
+- Inside Compose the API connects with `mongodb://mongodb:27017/adaptive_billing?directConnection=true`. The replica-set member advertises `localhost:27017`, which only resolves on the host, so containers need `directConnection=true`.
+- The bundled SPA calls its own origin. Pass `--build-arg VITE_API_URL=https://api.example.com` only if the SPA in the image should call an API elsewhere.
+- Production cookies are `Secure`. Browsers accept them on `http://localhost`; on any other host serve the app over HTTPS, or login will not persist.
+- `scripts/docker-smoke-test.mjs` registers a throwaway retail organization and checks health, the SPA routes, login, a stock adjustment, a POS checkout, an invoice, a payment and a refund (the transaction-backed flows).
+
+### Render
+
+`render.yaml` defines a static site for the SPA and a Docker web service for the API with `JWT_SECRET` generated and `MONGODB_URI`/SMTP values set in the dashboard. `frontend/.env.production` and the blueprint point at `https://adaptive-billing-api.onrender.com`; change both if you deploy under another name.
 
 ---
 

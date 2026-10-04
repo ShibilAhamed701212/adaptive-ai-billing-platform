@@ -19,5 +19,34 @@ services:
       retries: 20
       start_period: 10s
 
+  # Production image (API + built SPA). Opt-in: docker compose --profile app up -d --build
+  api:
+    profiles: ['app']
+    build: .
+    image: adaptive-billing
+    container_name: billing_api
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    ports:
+      - '10000:10000'
+    environment:
+      - NODE_ENV=production
+      - PORT=10000
+      # The replica-set member advertises localhost:27017, which only resolves on the host;
+      # directConnection makes the driver use the compose service name instead.
+      - MONGODB_URI=mongodb://mongodb:27017/adaptive_billing?directConnection=true
+      - CLIENT_URL=${CLIENT_URL:-http://localhost:10000}
+      # Required; the server refuses to start in production without a strong secret.
+      - JWT_SECRET=${JWT_SECRET:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+
 volumes:
   mongo_data:

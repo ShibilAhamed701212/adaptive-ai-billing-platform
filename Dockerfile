@@ -20,7 +20,11 @@ COPY frontend/ ./frontend/
 # Build in correct dependency order: shared first, then backend and frontend
 RUN npm run build --workspace=shared
 RUN npm run build --workspace=backend
-RUN npm run build --workspace=frontend
+# The SPA in this image is served by the API itself, so it must call its own origin. Without this,
+# frontend/.env.production would bake the hosted Render API URL into the bundle. Pass
+# --build-arg VITE_API_URL=https://api.example.com only when the API lives elsewhere.
+ARG VITE_API_URL=
+RUN VITE_API_URL="$VITE_API_URL" npm run build --workspace=frontend
 
 # Stage 2: Production runtime image
 FROM node:20-slim AS runner
