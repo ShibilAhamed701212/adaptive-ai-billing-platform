@@ -5,6 +5,8 @@ export interface IUserDoc extends Document, Omit<IUserData, '_id' | 'organizatio
   _id: mongoose.Types.ObjectId;
   organizationId: mongoose.Types.ObjectId;
   passwordHash: string;
+  /** Sessions issued before this instant are rejected (set on every password change). */
+  passwordChangedAt?: Date;
 }
 
 const UserSchema = new Schema<IUserDoc>(
@@ -19,6 +21,7 @@ const UserSchema = new Schema<IUserDoc>(
       default: 'admin',
     },
     isActive: { type: Boolean, default: true },
+    passwordChangedAt: { type: Date },
   },
   { timestamps: true }
 );

@@ -72,11 +72,19 @@ export async function restoreTenantBackup(req: Request, res: Response, next: Nex
     const { backup } = req.body;
 
     if (!backup || !backup.data) {
+      await session.abortTransaction();
+      session.endSession();
       res.status(400).json({ success: false, error: { code: 'INVALID_BACKUP', message: 'Valid backup payload is required' } });
       return;
     }
 
-    const { products = [], customers = [], suppliers = [] } = backup.data;
+    const asArray = (v: unknown) => (Array.isArray(v) ? v : []);
+    // Records are matched by business key (sku/email/name); database ids and timestamps from the
+    // backup must not be written, or restoring into re-created records fails on the immutable _id.
+    const clean = ({ _id, __v, createdAt, updatedAt, organizationId, ...rest }: any) => rest;
+    const products = asArray(backup.data.products).map(clean).filter((p: any) => p.sku);
+    const customers = asArray(backup.data.customers).map(clean).filter((c: any) => c.email);
+    const suppliers = asArray(backup.data.suppliers).map(clean).filter((x: any) => x.name);
 
     let restoredProducts = 0;
     for (const p of products) {

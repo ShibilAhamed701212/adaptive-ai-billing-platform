@@ -14,7 +14,8 @@
     "test:saas": "ts-node src/tests/saas-flow.test.ts",
     "test:audit": "ts-node src/tests/logic-audit.test.ts",
     "test:auth": "tsx src/tests/auth.middleware.test.ts",
-    "lint": "eslint src --ext .ts"
+    "lint": "eslint src --ext .ts",
+    "test:hardening": "tsx src/tests/production-hardening.test.ts"
   },
   "dependencies": {
     "@billing/shared": "*",

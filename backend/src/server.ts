@@ -4,7 +4,12 @@ import { ENV, validateRuntimeEnvironment } from './config/env';
 import { startCronJobs } from './jobs/scheduler';
 
 async function bootstrap() {
-  validateRuntimeEnvironment();
+  try {
+    validateRuntimeEnvironment();
+  } catch (err: any) {
+    console.error(`❌ [Config] ${err.message}`);
+    process.exit(1);
+  }
 
   const app = createApp();
   const port = Number(ENV.PORT) || 10000;
@@ -19,7 +24,9 @@ async function bootstrap() {
   try {
     await connectDB();
   } catch (err: any) {
-    console.warn(`⚠️ [Database] Connection warning during startup: ${err.message}`);
+    console.error(`❌ [Database] Startup failed: ${err.message}`);
+    // Without a database the API cannot serve anyone; exit so the platform restarts or rolls back.
+    process.exit(1);
   }
 
   startCronJobs();

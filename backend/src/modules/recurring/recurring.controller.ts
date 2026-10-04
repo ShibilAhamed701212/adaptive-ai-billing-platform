@@ -4,6 +4,7 @@ import { RecurringProfileModel } from '../../models/RecurringProfile.model';
 import { CustomerModel } from '../../models/Customer.model';
 import { executeRecurringProfileGeneration } from '../../jobs/recurring-invoice.job';
 import { logAuditEvent } from '../../core/audit/audit.service';
+import { pickFields } from '../../core/utils/pick';
 
 const FREQUENCY_ALIASES: Record<string, string> = {
   yearly: 'annual',
@@ -110,7 +111,20 @@ export async function createRecurringProfile(req: Request, res: Response, next: 
 export async function updateRecurringProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const orgId = req.tenant!.organizationId;
-    const updates: any = { ...req.body };
+    // Customer, organization and run counters are fixed once a profile exists.
+    const updates: any = pickFields(req.body, [
+      'profileName', 'items', 'frequency', 'nextRunDate', 'endDate', 'maxOccurrences', 'autoSend', 'status',
+      'invoiceDiscountAmount', 'notes', 'terms', 'customFields',
+    ] as const);
+    if (updates.status !== undefined && !['active', 'paused', 'cancelled'].includes(updates.status)) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Status must be active, paused or cancelled' } });
+      return;
+    }
+    if (updates.items !== undefined && (!Array.isArray(updates.items) || updates.items.length === 0 ||
+      updates.items.some((it: any) => !(Number(it?.quantity) > 0) || !(Number(it?.unitPrice) >= 0) || !(Number(it?.taxRate ?? 0) >= 0)))) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Items need a positive quantity and non-negative price and tax' } });
+      return;
+    }
     if (updates.frequency !== undefined) {
       const normalized = normalizeFrequency(updates.frequency);
       if (!normalized) {
@@ -151,6 +165,10 @@ export async function triggerManualRun(req: Request, res: Response, next: NextFu
     }
 
     const generatedInvoice = await executeRecurringProfileGeneration(profile);
+    if (!generatedInvoice) {
+      res.status(409).json({ success: false, error: { code: 'ALREADY_INVOICED', message: 'This billing period was already invoiced, or the profile is not active' } });
+      return;
+    }
 
     res.json({
       success: true,

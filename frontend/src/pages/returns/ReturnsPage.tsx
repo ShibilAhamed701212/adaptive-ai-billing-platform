@@ -413,11 +413,18 @@ export const ReturnsPage = () => {
 
                 {/* Calculation Summary Bar */}
                 {(() => {
-                  const returnSubtotal = returnItems.reduce((sum, item) => {
-                    const price = foundInvoice.items.find(i => String(i.productId || (i as any)._id) === String(item.productId))?.unitPrice || 0;
-                    return sum + (item.quantity * price);
-                  }, 0);
-                  const replacementSubtotal = exchangeItems.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0);
+                  // Mirror the server: refund the share of what was paid (discounts + tax included),
+                  // and price replacements tax-inclusive from the catalog.
+                  const returnSubtotal = Math.round(returnItems.reduce((sum, item) => {
+                    const line: any = foundInvoice.items.find(i => String(i.productId || (i as any)._id) === String(item.productId));
+                    if (!line || !line.quantity) return sum;
+                    const paid = typeof line.lineTotal === 'number' ? line.lineTotal : line.unitPrice * line.quantity * (1 + (line.taxRate || 0));
+                    return sum + (paid * item.quantity) / line.quantity;
+                  }, 0) * 100) / 100;
+                  const replacementSubtotal = Math.round(exchangeItems.reduce((sum, item) => {
+                    const taxRate = catalogProducts.find((p: any) => p._id === item.productId)?.taxRate || 0;
+                    return sum + item.unitPrice * item.quantity * (1 + taxRate);
+                  }, 0) * 100) / 100;
                   const netDifference = replacementSubtotal - returnSubtotal;
 
                   return (

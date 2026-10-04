@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
 import { InvoiceTemplateModel } from '../../models/InvoiceTemplate.model';
 import { logAuditEvent } from '../../core/audit/audit.service';
+import { pickFields } from '../../core/utils/pick';
 
 export async function listTemplates(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -68,8 +69,8 @@ export async function updateTemplate(req: Request, res: Response, next: NextFunc
 
     const template = await InvoiceTemplateModel.findOneAndUpdate(
       { _id: templateId, organizationId: new mongoose.Types.ObjectId(orgId) },
-      req.body,
-      { new: true }
+      { $set: pickFields(req.body, ['templateName', 'description', 'layout', 'brandColors', 'fontFamily', 'isDefault'] as const) },
+      { new: true, runValidators: true }
     );
 
     if (!template) {

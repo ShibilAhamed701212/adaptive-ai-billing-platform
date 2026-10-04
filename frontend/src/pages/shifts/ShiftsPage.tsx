@@ -161,6 +161,10 @@ export const ShiftsPage: React.FC = () => {
                 <span className="text-gray-600">Cash Expenses</span>
                 <span className="font-medium font-mono text-red-600">-{currencySymbol}{(currentShift.liveMetrics?.expenses || 0).toLocaleString()}</span>
               </div>
+              <div className="flex justify-between py-2 border-b">
+                <span className="text-gray-600">Cash Refunds (returns)</span>
+                <span className="font-medium font-mono text-red-600">-{currencySymbol}{(currentShift.liveMetrics?.refunds || 0).toLocaleString()}</span>
+              </div>
               <div className="flex justify-between py-3 border-t-2 border-indigo-200 bg-indigo-50/50 px-2 rounded">
                 <span className="font-semibold text-gray-900">Expected Cash in Drawer</span>
                 <span className="font-bold font-mono text-indigo-700 text-lg">

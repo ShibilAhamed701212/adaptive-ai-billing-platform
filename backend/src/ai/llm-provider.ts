@@ -9,6 +9,23 @@ export interface LLMMessage {
   };
 }
 
+/** Per-request cap: a hung provider must not hold the API request (and its socket) open. */
+const LLM_TIMEOUT_MS = 30_000;
+
+/** An AI response that should have been JSON but wasn't: report it as a bad gateway, not a crash. */
+export function parseLlmJson<T = any>(text: string): T {
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw Object.assign(new Error('The AI service returned an unreadable response. Please try again.'), { statusCode: 502, code: 'AI_BAD_RESPONSE' });
+  }
+}
+
+/** Raised when an AI-only feature is used without any provider configured or reachable. */
+export function aiUnavailableError(): Error {
+  return Object.assign(new Error('AI features are unavailable right now. Try again later or contact your administrator.'), { statusCode: 503, code: 'AI_UNAVAILABLE' });
+}
+
 export async function callLLM(messages: LLMMessage[], options?: { json?: boolean; temperature?: number }): Promise<string | null> {
   const geminiKey = process.env.GEMINI_API_KEY || ENV.GEMINI_API_KEY;
   const openaiKey = process.env.OPENAI_API_KEY || ENV.OPENAI_API_KEY;
@@ -47,14 +64,19 @@ export async function callLLM(messages: LLMMessage[], options?: { json?: boolean
         'gemini-flash-lite-latest',
       ];
 
+      // Overall budget across model fallbacks so one request can't run for minutes.
+      const deadline = Date.now() + 45_000;
       for (const model of modelsToTry) {
+        if (Date.now() > deadline) break;
         // Attempt call with 1 retry on 503 (transient overload)
         for (let attempt = 0; attempt < 2; attempt++) {
           try {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
+            // Key in a header, not the URL, so it never lands in proxy or error logs.
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
             const res = await fetch(url, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
+              signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
               body: JSON.stringify({
                 contents,
                 systemInstruction,
@@ -97,15 +119,22 @@ export async function callLLM(messages: LLMMessage[], options?: { json?: boolean
   // 2. Try OpenAI if configured
   if (openaiKey && openaiKey.trim().length > 0) {
     try {
+      // OpenAI takes images as image_url parts; it cannot read PDFs this way.
+      const openaiMessages = messages.map((m) =>
+        m.inlineData && m.inlineData.mimeType.startsWith('image/')
+          ? { role: m.role, content: [{ type: 'text', text: m.content }, { type: 'image_url', image_url: { url: `data:${m.inlineData.mimeType};base64,${m.inlineData.data}` } }] }
+          : { role: m.role, content: m.content }
+      );
       const res = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${openaiKey}`,
         },
+        signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
         body: JSON.stringify({
           model: 'gpt-4o-mini',
-          messages,
+          messages: openaiMessages,
           temperature: options?.temperature ?? 0.2,
           response_format: options?.json ? { type: 'json_object' } : undefined,
         }),

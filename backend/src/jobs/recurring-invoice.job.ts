@@ -37,79 +37,93 @@ export function calculateNextRunDate(currentDate: Date, frequency: string): Date
 
 export async function executeRecurringProfileGeneration(profile: IRecurringProfileDoc): Promise<any> {
   const org = await OrganizationModel.findById(profile.organizationId);
-  const customer = await CustomerModel.findById(profile.customerId);
+  const customer = await CustomerModel.findOne({ _id: profile.customerId, organizationId: profile.organizationId });
 
   if (!org || !customer) {
     throw new Error('Organization or Customer associated with recurring profile not found');
   }
 
-  // Calculate invoice
-  const { items: processedItems, totals } = calculateInvoice(profile.items as any, {
-    taxSystem: org.settings.taxSystem,
-    originState: org.settings.address?.state,
-    destinationState: customer.billingAddress?.state,
-    invoiceDiscountAmount: profile.invoiceDiscountAmount,
-  });
+  // Atomically claim this billing period before creating anything: overlapping runs (several
+  // instances, a restart, or a manual trigger during the scheduled run) must not bill twice.
+  const periodRunDate = profile.nextRunDate;
+  const followingRunDate = calculateNextRunDate(periodRunDate, profile.frequency);
+  const claimed = await RecurringProfileModel.findOneAndUpdate(
+    { _id: profile._id, status: 'active', nextRunDate: periodRunDate },
+    { $set: { nextRunDate: followingRunDate, lastRunDate: new Date() }, $inc: { totalGeneratedCount: 1 } },
+    { new: true }
+  );
+  if (!claimed) return null; // another run already billed this period
+  try {
 
-  // Atomic unique sequential number (BUG-04 regression guard: batch runs racing other
-  // generators could mint duplicate invoice numbers).
-  const { invoiceNumber } = await reserveInvoiceNumber(String(org._id));
-
-  const issueDate = new Date().toISOString().split('T')[0];
-  const dueDate = new Date(Date.now() + (org.settings.paymentTermsDays || 30) * 86400000).toISOString().split('T')[0];
-  const status = profile.autoSend ? 'sent' : 'draft';
-
-  const invoice = await InvoiceModel.create({
-    organizationId: org._id,
-    invoiceNumber,
-    customerId: customer._id,
-    customerSnapshot: {
-      name: customer.name,
-      email: customer.email,
-      phone: customer.phone,
-      companyName: customer.companyName,
-      gstinOrTaxId: customer.gstinOrTaxId,
-      billingAddress: customer.billingAddress,
-    },
-    issueDate,
-    dueDate,
-    currency: org.settings.currency || 'INR',
-    currencySymbol: org.settings.currencySymbol || '₹',
-    items: processedItems,
-    subtotal: totals.rawSubtotal,
-    discountTotal: totals.totalDiscount,
-    taxTotal: totals.taxTotal,
-    taxBreakdown: totals.taxBreakdown,
-    grandTotal: totals.grandTotal,
-    amountPaid: 0,
-    amountDue: totals.grandTotal,
-    status,
-    notes: profile.notes || 'Auto-generated recurring subscription invoice',
-    terms: profile.terms || `Payment due within ${org.settings.paymentTermsDays || 30} days.`,
-    customFields: profile.customFields || {},
-    createdBy: profile.createdBy,
-  });
-
-  if (status === 'sent') {
-    await CustomerModel.findByIdAndUpdate(customer._id, {
-      $inc: { outstandingBalance: totals.grandTotal },
+    // Calculate invoice
+    const { items: processedItems, totals } = calculateInvoice(profile.items as any, {
+      taxSystem: org.settings.taxSystem,
+      originState: org.settings.address?.state,
+      destinationState: customer.billingAddress?.state,
+      invoiceDiscountAmount: profile.invoiceDiscountAmount,
     });
+
+    // Atomic unique sequential number (BUG-04 regression guard: batch runs racing other
+    // generators could mint duplicate invoice numbers).
+    const { invoiceNumber } = await reserveInvoiceNumber(String(org._id));
+
+    const issueDate = new Date().toISOString().split('T')[0];
+    const dueDate = new Date(Date.now() + (org.settings.paymentTermsDays || 30) * 86400000).toISOString().split('T')[0];
+    const status = profile.autoSend ? 'sent' : 'draft';
+
+    const invoice = await InvoiceModel.create({
+      organizationId: org._id,
+      invoiceNumber,
+      customerId: customer._id,
+      customerSnapshot: {
+        name: customer.name,
+        email: customer.email,
+        phone: customer.phone,
+        companyName: customer.companyName,
+        gstinOrTaxId: customer.gstinOrTaxId,
+        billingAddress: customer.billingAddress,
+      },
+      issueDate,
+      dueDate,
+      currency: org.settings.currency || 'INR',
+      currencySymbol: org.settings.currencySymbol || '₹',
+      items: processedItems,
+      subtotal: totals.rawSubtotal,
+      discountTotal: totals.totalDiscount,
+      taxTotal: totals.taxTotal,
+      taxBreakdown: totals.taxBreakdown,
+      grandTotal: totals.grandTotal,
+      amountPaid: 0,
+      amountDue: totals.grandTotal,
+      status,
+      notes: profile.notes || 'Auto-generated recurring subscription invoice',
+      terms: profile.terms || `Payment due within ${org.settings.paymentTermsDays || 30} days.`,
+      customFields: profile.customFields || {},
+      createdBy: profile.createdBy,
+    });
+
+    if (status === 'sent') {
+      await CustomerModel.findByIdAndUpdate(customer._id, {
+        $inc: { outstandingBalance: totals.grandTotal },
+      });
+    }
+
+    // Check completion
+    if (
+      (claimed.maxOccurrences && claimed.totalGeneratedCount >= claimed.maxOccurrences) ||
+      (claimed.endDate && claimed.nextRunDate > claimed.endDate)
+    ) {
+      await RecurringProfileModel.updateOne({ _id: claimed._id }, { $set: { status: 'completed' } });
+    }
+    return invoice;
+  } catch (err) {
+    // Release the claim so the period is retried on the next run.
+    await RecurringProfileModel.updateOne(
+      { _id: profile._id, nextRunDate: followingRunDate },
+      { $set: { nextRunDate: periodRunDate }, $inc: { totalGeneratedCount: -1 } }
+    );
+    throw err;
   }
-
-  // Advance profile state
-  profile.totalGeneratedCount += 1;
-  profile.lastRunDate = new Date();
-  profile.nextRunDate = calculateNextRunDate(profile.nextRunDate, profile.frequency);
-
-  // Check completion
-  if (profile.maxOccurrences && profile.totalGeneratedCount >= profile.maxOccurrences) {
-    profile.status = 'completed';
-  } else if (profile.endDate && profile.nextRunDate > profile.endDate) {
-    profile.status = 'completed';
-  }
-
-  await profile.save();
-  return invoice;
 }
 
 export async function processAllPendingRecurringInvoices(orgId?: string): Promise<{ generatedCount: number; failedCount: number }> {
@@ -127,8 +141,7 @@ export async function processAllPendingRecurringInvoices(orgId?: string): Promis
   let failedCount = 0;
   for (const profile of profilesToRun) {
     try {
-      await executeRecurringProfileGeneration(profile);
-      generatedCount++;
+      if (await executeRecurringProfileGeneration(profile)) generatedCount++;
     } catch (err) {
       console.error(`Failed to process recurring profile ${profile._id}:`, err);
       failedCount++;

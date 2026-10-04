@@ -7,22 +7,30 @@ import { ReturnModel } from '../../models/Return.model';
 import { ExpenseModel } from '../../models/Expense.model';
 import { DashboardSummary, AnomalyAlert } from '@billing/shared';
 import mongoose from 'mongoose';
+import { CreditNoteModel } from '../../models/CreditNote.model';
+import { OrganizationModel } from '../../models/Organization.model';
+
+/** Drafts, unapproved and voided documents are not revenue or receivables. */
+const NOT_ISSUED = ['draft', 'pending_approval', 'void', 'cancelled'];
 
 export async function getDashboardSummary(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const orgId = req.tenant!.organizationId;
     const orgObjId = new mongoose.Types.ObjectId(orgId);
 
-    const [invoices, payments, customers] = await Promise.all([
+    const [org, invoices, payments, customers] = await Promise.all([
+      OrganizationModel.findById(orgObjId).select('settings.currencySymbol').lean(),
       InvoiceModel.find({ organizationId: orgObjId }).sort({ createdAt: -1 }).lean(),
       PaymentModel.find({ organizationId: orgObjId }).lean(),
       CustomerModel.find({ organizationId: orgObjId, isActive: true }).lean(),
     ]);
 
-    const totalRevenue = invoices.reduce((acc, i) => acc + (i.grandTotal || 0), 0);
-    const totalCollected = payments.reduce((acc, p) => acc + (p.amount || 0), 0);
-    const totalOutstanding = invoices.reduce((acc, i) => acc + (i.amountDue || 0), 0);
-    const overdueInvoices = invoices.filter((i) => i.status === 'overdue' || (i.amountDue > 0 && new Date(i.dueDate) < new Date()));
+    const cs = (org as any)?.settings?.currencySymbol || '₹';
+    const issuedInvoices = invoices.filter((i) => !NOT_ISSUED.includes(i.status));
+    const totalRevenue = issuedInvoices.reduce((acc, i) => acc + (i.grandTotal || 0), 0);
+    const totalCollected = payments.filter((p) => p.status === 'completed').reduce((acc, p) => acc + (p.amount || 0), 0);
+    const totalOutstanding = issuedInvoices.reduce((acc, i) => acc + (i.amountDue || 0), 0);
+    const overdueInvoices = issuedInvoices.filter((i) => i.status === 'overdue' || (i.amountDue > 0 && new Date(i.dueDate) < new Date()));
     const overdueAmount = overdueInvoices.reduce((acc, i) => acc + i.amountDue, 0);
 
     const paidCount = invoices.filter((i) => i.status === 'paid').length;
@@ -37,7 +45,7 @@ export async function getDashboardSummary(req: Request, res: Response, next: Nex
           severity: 'medium',
           type: 'unusual_discount',
           title: `High Discount on #${inv.invoiceNumber}`,
-          description: `Discount of ₹${inv.discountTotal.toLocaleString()} (${Math.round((inv.discountTotal / inv.subtotal) * 100)}%) is above normal thresholds.`,
+          description: `Discount of ${cs}${inv.discountTotal.toLocaleString()} (${Math.round((inv.discountTotal / inv.subtotal) * 100)}%) is above normal thresholds.`,
           suggestedAction: 'Review discount approval log',
           relatedEntityId: String(inv._id),
           relatedEntityType: 'invoice',
@@ -94,17 +102,17 @@ export async function getDashboardSummary(req: Request, res: Response, next: Nex
       aiDailyBrief: {
         greeting: `Good day! Here is your AI financial intelligence overview.`,
         summaryBullets: [
-          `Total invoiced volume stands at ₹${totalRevenue.toLocaleString()} across ${invoices.length} transactions.`,
-          `₹${totalCollected.toLocaleString()} collected to date, with ₹${totalOutstanding.toLocaleString()} receivables pending.`,
+          `Total invoiced volume stands at ${cs}${totalRevenue.toLocaleString()} across ${issuedInvoices.length} issued invoices.`,
+          `${cs}${totalCollected.toLocaleString()} collected to date, with ${cs}${totalOutstanding.toLocaleString()} receivables pending.`,
           overdueInvoices.length > 0
-            ? `⚠️ ${overdueInvoices.length} invoice(s) are overdue totaling ₹${overdueAmount.toLocaleString()}.`
+            ? `⚠️ ${overdueInvoices.length} invoice(s) are overdue totaling ${cs}${overdueAmount.toLocaleString()}.`
             : `✅ No overdue accounts detected. All current receivables are within payment terms.`,
         ],
         priorityActions: [
           ...(overdueInvoices.length > 0
             ? [
                 {
-                  action: `Dispatch smart reminder for overdue invoice #${overdueInvoices[0].invoiceNumber} (₹${overdueInvoices[0].amountDue.toLocaleString()})`,
+                  action: `Dispatch smart reminder for overdue invoice #${overdueInvoices[0].invoiceNumber} (${cs}${overdueInvoices[0].amountDue.toLocaleString()})`,
                   urgency: 'high' as const,
                   linkTo: `/invoices/${overdueInvoices[0]._id}`,
                 },
@@ -285,10 +293,13 @@ export async function getCustomerStatement(req: Request, res: Response, next: Ne
     const orgId = req.tenant!.organizationId;
     const customerId = req.params.customerId;
 
-    const [customer, invoices, payments] = await Promise.all([
+    // Only issued invoices are owed, only completed payments settle them, and applied credit notes
+    // reduce the balance, so the running total matches what the customer actually owes.
+    const [customer, invoices, payments, creditNotes] = await Promise.all([
       CustomerModel.findOne({ _id: customerId, organizationId: new mongoose.Types.ObjectId(orgId) }),
-      InvoiceModel.find({ customerId, organizationId: new mongoose.Types.ObjectId(orgId) }).sort({ issueDate: 1 }),
-      PaymentModel.find({ customerId, organizationId: new mongoose.Types.ObjectId(orgId) }).sort({ paymentDate: 1 }),
+      InvoiceModel.find({ customerId, organizationId: new mongoose.Types.ObjectId(orgId), status: { $nin: NOT_ISSUED } }).sort({ issueDate: 1 }),
+      PaymentModel.find({ customerId, organizationId: new mongoose.Types.ObjectId(orgId), status: 'completed' }).sort({ paymentDate: 1 }),
+      CreditNoteModel.find({ customerId, organizationId: new mongoose.Types.ObjectId(orgId), status: 'applied' }).lean(),
     ]);
 
     if (!customer) {
@@ -316,6 +327,17 @@ export async function getCustomerStatement(req: Request, res: Response, next: Ne
         debit: 0,
         credit: pay.amount,
         status: pay.status,
+      });
+    });
+
+    creditNotes.forEach((cn: any) => {
+      ledger.push({
+        date: (cn.createdAt ? new Date(cn.createdAt).toISOString() : '').split('T')[0],
+        type: 'CREDIT_NOTE',
+        reference: cn.creditNoteNumber,
+        debit: 0,
+        credit: cn.totalAmount,
+        status: cn.status,
       });
     });
 
@@ -400,7 +422,16 @@ export async function getProfitReport(req: Request, res: Response, next: NextFun
       }
     }
 
-    const totalRefunds = returns.reduce((sum, r) => sum + (r.totalRefundAmount || 0), 0);
+    // Sales above are pre-tax, so refunds are counted pre-tax too; restocked goods come back out of COGS.
+    let totalRefunds = 0;
+    for (const r of returns as any[]) {
+      for (const item of r.items || []) {
+        totalRefunds += (item.refundTotal || 0) - (item.taxAmount || 0);
+        if (item.restock !== false && item.productId) {
+          totalCOGS -= (item.quantityReturned || 0) * (productCostMap.get(String(item.productId)) || 0);
+        }
+      }
+    }
     const totalOperatingExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
 
     const netSales = grossSales - totalDiscounts - totalRefunds;
@@ -635,7 +666,7 @@ export async function getAgencySummary(req: Request, res: Response, next: NextFu
       ProjectModel.find({ organizationId: new mongoose.Types.ObjectId(orgId), status: 'active' }).lean(),
       TimesheetModel.find({ organizationId: new mongoose.Types.ObjectId(orgId), status: 'draft', isBillable: true }).lean(),
       RetainerModel.find({ organizationId: new mongoose.Types.ObjectId(orgId), status: 'active' }).lean(),
-      InvoiceModel.find({ organizationId: new mongoose.Types.ObjectId(orgId), status: { $in: ['sent', 'partially_paid', 'overdue'] } }).lean()
+      InvoiceModel.find({ organizationId: new mongoose.Types.ObjectId(orgId), status: { $in: ['approved', 'sent', 'partially_paid', 'overdue'] } }).lean()
     ]);
 
     const unbilledHours = timesheets.reduce((acc, t) => acc + (t.hours || 0), 0);

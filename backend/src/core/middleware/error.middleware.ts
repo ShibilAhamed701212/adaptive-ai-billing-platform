@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 import mongoose from 'mongoose';
+import { IS_PRODUCTION } from '../../config/env';
 
 /**
  * Global error handler — catches all unhandled errors from route handlers.
@@ -103,21 +104,37 @@ export function errorHandler(
       success: false,
       error: {
         code: 'DATABASE_NOT_CONNECTED',
-        message: 'MongoDB is currently not running or unreachable. Please start MongoDB locally, run Docker (docker compose up -d), or provide a free MongoDB Atlas connection string in .env (MONGODB_URI).',
+        message: IS_PRODUCTION
+          ? 'The service is temporarily unavailable. Please try again shortly.'
+          : 'MongoDB is currently not running or unreachable. Please start MongoDB locally, run Docker (docker compose up -d), or provide a free MongoDB Atlas connection string in .env (MONGODB_URI).',
       },
     });
     return;
   }
 
-  // 5. Custom application error (with statusCode)
-  const statusCode = err.statusCode || 500;
-  const message = err.message || 'Internal Server Error';
+  // Upload rejected by multer (size/field limits)
+  if (err?.name === 'MulterError') {
+    const tooLarge = err.code === 'LIMIT_FILE_SIZE';
+    res.status(tooLarge ? 413 : 400).json({ success: false, error: { code: err.code, message: tooLarge ? 'File is too large' : err.message } });
+    return;
+  }
 
+  // 6. Business-rule errors: handlers throw plain `new Error('Insufficient stock ...')` with a
+  // message meant for the user, so answer 400 with it.
+  if (!err.statusCode && err instanceof Error && err.name === 'Error') {
+    res.status(400).json({ success: false, error: { code: 'REQUEST_FAILED', message: err.message } });
+    return;
+  }
+
+  // 7. Explicit statusCode, or an unexpected failure (driver/runtime errors). Never expose
+  // internal details of unexpected errors to production users; they are logged above.
+  const statusCode = err.statusCode || 500;
+  const exposeMessage = statusCode < 500 || !IS_PRODUCTION;
   res.status(statusCode).json({
     success: false,
     error: {
-      code: err.code || 'SERVER_ERROR',
-      message,
+      code: typeof err.code === 'string' ? err.code : 'SERVER_ERROR',
+      message: exposeMessage ? err.message || 'Internal Server Error' : 'Something went wrong. Please try again.',
     },
   });
 }

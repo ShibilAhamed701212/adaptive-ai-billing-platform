@@ -3,6 +3,7 @@ import { PlanModel } from '../../models/Plan.model';
 import { SubscriptionModel } from '../../models/Subscription.model';
 import { CustomerModel } from '../../models/Customer.model';
 import mongoose from 'mongoose';
+import { pickFields } from '../../core/utils/pick';
 
 export async function listPlans(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -42,9 +43,14 @@ export async function updatePlan(req: Request, res: Response, next: NextFunction
     const orgId = req.tenant!.organizationId;
     const planId = req.params.id;
 
+    const updates = pickFields(req.body, ['name', 'price', 'billingInterval', 'features', 'limits', 'isActive'] as const);
+    if (updates.price !== undefined && !(Number(updates.price) >= 0)) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Price cannot be negative' } });
+      return;
+    }
     const plan = await PlanModel.findOneAndUpdate(
       { _id: new mongoose.Types.ObjectId(planId), organizationId: new mongoose.Types.ObjectId(orgId) },
-      req.body,
+      { $set: updates },
       { new: true, runValidators: true }
     );
 

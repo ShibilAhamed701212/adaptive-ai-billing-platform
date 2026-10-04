@@ -53,6 +53,7 @@ export async function posCheckout(req: Request, res: Response, next: NextFunctio
 
     const org = await OrganizationModel.findById(orgId).session(session);
     if (!org) throw new Error('Organization not found');
+    const currencySymbol = (org as any).settings?.currencySymbol || '₹';
 
     let customer = null;
     if (customerId) {
@@ -69,6 +70,17 @@ export async function posCheckout(req: Request, res: Response, next: NextFunctio
     
     const productMap = new Map(dbProducts.map(p => [String(p._id), p]));
 
+    // Quantities must be positive (a negative line would refund money and add stock), and stock is
+    // checked against the total per product so splitting it across lines can't oversell.
+    const requestedByProduct = new Map<string, number>();
+    for (const item of items) {
+      const qty = Number(item.quantity);
+      if (!Number.isFinite(qty) || qty <= 0) throw new Error('Each item needs a quantity greater than zero');
+      const discount = Number(item.discountAmount) || 0;
+      if (discount < 0) throw new Error('Discounts cannot be negative');
+      requestedByProduct.set(String(item.productId), (requestedByProduct.get(String(item.productId)) || 0) + qty);
+    }
+
     for (const item of items) {
       const dbProduct = productMap.get(item.productId);
       if (!dbProduct) throw new Error(`Product not found: ${item.productId}`);
@@ -77,8 +89,9 @@ export async function posCheckout(req: Request, res: Response, next: NextFunctio
       // Stock check
       if (dbProduct.manageInventory) {
         const stock = dbProduct.stockQuantity || 0;
-        if (stock < item.quantity) {
-          throw new Error(`Insufficient stock for ${dbProduct.name}. Requested: ${item.quantity}, Available: ${stock}`);
+        const requested = requestedByProduct.get(String(item.productId)) || 0;
+        if (stock < requested) {
+          throw new Error(`Insufficient stock for ${dbProduct.name}. Requested: ${requested}, Available: ${stock}`);
         }
       }
     }
@@ -92,7 +105,9 @@ export async function posCheckout(req: Request, res: Response, next: NextFunctio
         description: dbProduct.name,
         unit: dbProduct.unit || 'unit',
         quantity: Number(item.quantity),
-        unitPrice: Number(item.unitPrice !== undefined ? item.unitPrice : dbProduct.unitPrice),
+        // Always the catalog price: a client-supplied price would let anyone sell at any price.
+        // Price reductions go through (audited) line or bill discounts instead.
+        unitPrice: dbProduct.unitPrice,
         discountAmount: Number(item.discountAmount) || 0,
         taxRate: Number(dbProduct.taxRate !== undefined ? dbProduct.taxRate : 0.18),
         hsnSacCode: dbProduct.hsnSacCode,
@@ -124,7 +139,7 @@ export async function posCheckout(req: Request, res: Response, next: NextFunctio
         throw new Error(`Insufficient loyalty points. Available: ${customer.loyaltyPoints || 0} pts, Requested: ${pointsToRedeem} pts`);
       }
       if (loyaltyRupeeValue > totals.grandTotal) {
-        throw new Error(`Loyalty redemption value (₹${loyaltyRupeeValue}) cannot exceed invoice total (₹${totals.grandTotal})`);
+        throw new Error(`Loyalty redemption value (${currencySymbol}${loyaltyRupeeValue}) cannot exceed invoice total (${currencySymbol}${totals.grandTotal})`);
       }
       if (!loyaltyPayment) {
         allPayments.push({ method: 'loyalty_points', amount: loyaltyRupeeValue });
@@ -147,7 +162,7 @@ export async function posCheckout(req: Request, res: Response, next: NextFunctio
       if (sp.method === 'store_credit') {
         if (!customer) throw new Error('Store credit payment requires a selected customer');
         if ((customer.storeCreditBalance || 0) < Number(sp.amount)) {
-          throw new Error(`Insufficient store credit. Available: ₹${customer.storeCreditBalance || 0}, Requested: ₹${sp.amount}`);
+          throw new Error(`Insufficient store credit. Available: ${currencySymbol}${customer.storeCreditBalance || 0}, Requested: ${currencySymbol}${sp.amount}`);
         }
       }
     }
@@ -260,7 +275,7 @@ export async function posCheckout(req: Request, res: Response, next: NextFunctio
         balanceAfter: customer.loyaltyPoints,
         referenceId: String(invoice._id),
         referenceModel: 'Invoice',
-        notes: `Redeemed ${pointsToRedeem} loyalty points (₹${loyaltyRupeeValue}) for invoice #${invoiceNumber}`,
+        notes: `Redeemed ${pointsToRedeem} loyalty points (${currencySymbol}${loyaltyRupeeValue}) for invoice #${invoiceNumber}`,
       });
       await loyaltyTx.save({ session });
     }

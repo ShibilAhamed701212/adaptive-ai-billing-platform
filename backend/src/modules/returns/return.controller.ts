@@ -85,6 +85,12 @@ export async function processReturn(req: Request, res: Response, next: NextFunct
         throw new Error(`Item ${returnReq.name || returnReq.productId} was not found on the original invoice`);
       }
 
+      const returnQty = Number(returnReq.quantity);
+      if (!Number.isInteger(returnQty) || returnQty <= 0) {
+        throw new Error(`Return quantity for ${invItem.description} must be a whole number greater than zero`);
+      }
+      returnReq.quantity = returnQty;
+
       const prodIdStr = String(invItem.productId || returnReq.productId);
       const previouslyReturned = alreadyReturnedMap.get(prodIdStr) || 0;
       const maxReturnable = invItem.quantity - previouslyReturned;
@@ -95,11 +101,15 @@ export async function processReturn(req: Request, res: Response, next: NextFunct
         );
       }
 
+      // Refund what the customer actually paid for these units: the invoice line total already
+      // reflects item and invoice-level discounts plus tax. List price would over-refund discounts.
       const unitPrice = invItem.unitPrice;
       const taxRate = invItem.taxRate || 0;
-      const lineSubtotal = unitPrice * returnReq.quantity;
-      const lineTax = lineSubtotal * taxRate;
-      const refundTotal = lineSubtotal + lineTax;
+      const share = returnReq.quantity / invItem.quantity;
+      const paidLineTotal = typeof invItem.lineTotal === 'number' ? invItem.lineTotal : unitPrice * invItem.quantity * (1 + taxRate);
+      const refundTotal = Math.round(paidLineTotal * share * 100) / 100;
+      const lineTax = Math.round(refundTotal * (taxRate / (1 + taxRate)) * 100) / 100;
+      const lineSubtotal = Math.round((refundTotal - lineTax) * 100) / 100;
 
       totalRefundAmount += refundTotal;
 
@@ -226,9 +236,11 @@ export async function processReturn(req: Request, res: Response, next: NextFunct
 
       if (!exProd) throw new Error(`Exchange product ${exItem.name || exItem.productId} not found`);
 
-      const qty = Number(exItem.quantity) || 1;
-      const unitPrice = Number(exItem.unitPrice) || exProd.unitPrice;
-      const lineTotal = unitPrice * qty;
+      const qty = Number(exItem.quantity);
+      if (!Number.isInteger(qty) || qty <= 0) throw new Error(`Exchange quantity for ${exProd.name} must be a whole number greater than zero`);
+      // Price replacements from the catalog (never the request), tax-inclusive like the refund side.
+      const unitPrice = exProd.unitPrice;
+      const lineTotal = Math.round(unitPrice * qty * (1 + (exProd.taxRate || 0)) * 100) / 100;
       newItemsTotal += lineTotal;
 
       // Inventory deduction for replacement item

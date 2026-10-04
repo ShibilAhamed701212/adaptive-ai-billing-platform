@@ -173,6 +173,7 @@ export async function updateUser(req: Request, res: Response, next: NextFunction
     if (password) {
       const salt = await bcrypt.genSalt(10);
       user.passwordHash = await bcrypt.hash(password, salt);
+      user.passwordChangedAt = new Date();
     }
 
     await user.save();

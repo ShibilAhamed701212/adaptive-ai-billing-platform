@@ -202,10 +202,9 @@ export const PointOfSalePage: React.FC = () => {
     try {
       const res = await fetchAllPages<Customer>('/customers');
       if (res.success && res.data) {
+        // No default customer: an unassigned sale is a walk-in. Auto-picking the first customer
+        // recorded every walk-in sale (and any shortfall as debt) on an unrelated account.
         setCustomers(res.data);
-        if (res.data.length > 0 && !selectedCustomerId) {
-          setSelectedCustomerId(res.data[0]._id as string);
-        }
       }
     } catch (e) {
       console.error(e);

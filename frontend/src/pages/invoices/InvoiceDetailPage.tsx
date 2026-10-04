@@ -342,10 +342,11 @@ export const InvoiceDetailPage: React.FC<InvoiceDetailPageProps> = ({ invoiceId,
                   type="number"
                   className="form-input num-mono"
                   required
-                  min="1"
+                  min="0.01"
+                  step="0.01"
                   max={invoice.amountDue}
-                  value={paymentAmount}
-                  onChange={(e) => setPaymentAmount(parseFloat(e.target.value) || 0)}
+                  value={paymentAmount || ''}
+                  onChange={(e) => setPaymentAmount(e.target.value === '' ? 0 : parseFloat(e.target.value))}
                 />
                 <span className="element-desc">Max outstanding: {currencySymbol}{invoice.amountDue.toLocaleString()}</span>
               </div>

@@ -77,7 +77,7 @@ cp .env.example .env
 
 Ensure variables are set:
 ```env
-PORT=5000
+PORT=5001
 NODE_ENV=development
 CLIENT_URL=http://localhost:5173
 MONGODB_URI=mongodb://localhost:27017/adaptive_billing
@@ -97,7 +97,7 @@ Run backend and frontend concurrently:
 npm run dev
 ```
 - **Frontend**: `http://localhost:5173`
-- **Backend API**: `http://localhost:5000`
+- **Backend API**: `http://localhost:5001`
 
 ---
 

@@ -18,7 +18,7 @@ export const createInvoiceSchema = z.object({
   customerId: z.string().min(1, 'Customer ID is required'),
   issueDate: z.string().optional(),
   dueDate: z.string().optional(),
-  items: z.array(invoiceItemSchema).min(1, 'At least one line item is required'),
+  items: z.array(invoiceItemSchema).min(1, 'At least one line item is required').max(500, 'An invoice can have at most 500 lines'),
   notes: z.string().max(5000).optional(),
   terms: z.string().max(5000).optional(),
   customFields: z.record(z.any()).optional().default({}),
@@ -29,7 +29,7 @@ export const createInvoiceSchema = z.object({
 export const updateInvoiceSchema = z.object({
   issueDate: z.string().optional(),
   dueDate: z.string().optional(),
-  items: z.array(invoiceItemSchema).min(1).optional(),
+  items: z.array(invoiceItemSchema).min(1).max(500).optional(),
   notes: z.string().max(5000).optional(),
   terms: z.string().max(5000).optional(),
   customFields: z.record(z.any()).optional(),
@@ -38,7 +38,7 @@ export const updateInvoiceSchema = z.object({
 
 export const previewInvoiceSchema = z.object({
   customerId: z.string().optional(),
-  items: z.array(invoiceItemSchema).min(1, 'At least one item is required'),
+  items: z.array(invoiceItemSchema).min(1, 'At least one item is required').max(500),
   invoiceDiscountAmount: z.number().min(0).optional().default(0),
   customFields: z.record(z.any()).optional(),
 });

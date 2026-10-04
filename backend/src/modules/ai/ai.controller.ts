@@ -3,16 +3,34 @@ import { parseInvoicePromptWithTools } from '../../ai/invoice-agent/invoice-copi
 import { processAskBusinessQuery } from '../../ai/finance-agent/ask-business';
 import { BILLING_MODEL_PRESETS } from '../../billing-engine/billing-models/presets';
 import { logAuditEvent } from '../../core/audit/audit.service';
+import { callLLM, parseLlmJson, aiUnavailableError } from '../../ai/llm-provider';
+
+/**
+ * Validate a free-text input for an AI call. Oversized inputs are rejected rather than sent to the
+ * provider: they cost real money and blow past model context limits.
+ */
+function aiText(value: unknown, field: string, max: number, required = true): string {
+  const text = value === undefined || value === null ? '' : String(value);
+  if (required && !text.trim()) {
+    throw Object.assign(new Error(`${field} is required`), { statusCode: 400, code: 'VALIDATION_ERROR' });
+  }
+  if (text.length > max) {
+    throw Object.assign(new Error(`${field} is too long (max ${max} characters)`), { statusCode: 400, code: 'INPUT_TOO_LONG' });
+  }
+  return text;
+}
+
+/** Call an AI-only feature (no deterministic fallback) and parse its JSON answer. */
+async function callLLMJson(messages: Parameters<typeof callLLM>[0]): Promise<any> {
+  const result = await callLLM(messages, { json: true });
+  if (!result) throw aiUnavailableError();
+  return parseLlmJson(result);
+}
 
 export async function draftInvoiceCopilot(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const orgId = req.tenant!.organizationId;
-    const { prompt } = req.body;
-
-    if (!prompt) {
-      res.status(400).json({ success: false, error: { code: 'MISSING_PROMPT', message: 'Prompt text is required' } });
-      return;
-    }
+    const prompt = aiText(req.body.prompt, 'Prompt', 2000);
 
     const draft = await parseInvoicePromptWithTools(orgId, prompt);
 
@@ -34,12 +52,7 @@ export async function draftInvoiceCopilot(req: Request, res: Response, next: Nex
 export async function askBusiness(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const orgId = req.tenant!.organizationId;
-    const { query } = req.body;
-
-    if (!query) {
-      res.status(400).json({ success: false, error: { code: 'MISSING_QUERY', message: 'Query string is required' } });
-      return;
-    }
+    const query = aiText(req.body.query, 'Question', 1000);
 
     const response = await processAskBusinessQuery(orgId, query);
 
@@ -60,9 +73,9 @@ export async function askBusiness(req: Request, res: Response, next: NextFunctio
 
 export async function suggestModelOnboarding(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { businessDescription, industry } = req.body;
-    
-    const { callLLM } = await import('../../ai/llm-provider');
+    const businessDescription = aiText(req.body.businessDescription, 'Business description', 2000);
+    const industry = aiText(req.body.industry, 'Industry', 200, false);
+
     const systemPrompt = `You are an AI Billing Architect. Based on the business description and industry, suggest the best base billing model.
 Valid models are: 'retail', 'subscription', 'rental', 'logistics', 'professional_services'.
 Return ONLY valid JSON matching this structure:
@@ -72,14 +85,11 @@ Return ONLY valid JSON matching this structure:
   "reason": "string"
 }`;
 
-    const llmResult = await callLLM([
+    const parsed = await callLLMJson([
       { role: 'system', content: systemPrompt },
       { role: 'user', content: `Description: ${businessDescription}\nIndustry: ${industry}` }
-    ], { json: true });
+    ]);
 
-    if (!llmResult) throw new Error('LLM failed to return a response.');
-    const parsed = JSON.parse(llmResult);
-    
     // Ensure we have a valid preset model
     const matchedModel = BILLING_MODEL_PRESETS[parsed.suggestedModel] ? parsed.suggestedModel : 'retail';
     const preset = BILLING_MODEL_PRESETS[matchedModel];
@@ -100,11 +110,20 @@ Return ONLY valid JSON matching this structure:
 
 export async function interactiveOnboardingInterview(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { messages = [], businessDescription = '', answers = {}, forceFinalize = false } = req.body;
+    const { messages = [], answers = {}, forceFinalize = false } = req.body;
+    const businessDescription = aiText(req.body.businessDescription, 'Business description', 2000, false);
+    if (!Array.isArray(messages) || messages.length > 30 || typeof answers !== 'object' || answers === null || Object.keys(answers).length > 30) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid interview history' } });
+      return;
+    }
 
     // Compile entire conversation history context
-    const conversationContext = messages.map((m: any) => `${m.role.toUpperCase()}: ${m.content}`).join('\n');
-    const answersContext = Object.entries(answers).map(([q, a]) => `- ${q}: ${a}`).join('\n');
+    const conversationContext = messages
+      .map((m: any) => `${String(m?.role || 'user').toUpperCase()}: ${aiText(m?.content, 'Message', 2000, false)}`)
+      .join('\n');
+    const answersContext = Object.entries(answers)
+      .map(([q, a]) => `- ${aiText(q, 'Question', 500, false)}: ${aiText(a, 'Answer', 500, false)}`)
+      .join('\n');
 
     const promptText = `
 User Business Input:
@@ -175,30 +194,15 @@ YOU MUST RESPOND ONLY WITH VALID JSON IN THIS FORMAT:
   }
 }`;
 
-    const { callLLM } = await import('../../ai/llm-provider');
-    const llmResult = await callLLM(
-      [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: promptText },
-      ],
-      { json: true }
-    );
-
-    if (!llmResult) {
-      throw new Error('LLM failed to return a response.');
+    const parsed = await callLLMJson([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: promptText },
+    ]);
+    if (!parsed || !parsed.architecture) {
+      res.status(502).json({ success: false, error: { code: 'AI_BAD_RESPONSE', message: 'The AI returned an incomplete blueprint. Please try again.' } });
+      return;
     }
-
-    try {
-      const parsed = JSON.parse(llmResult);
-      if (parsed && parsed.architecture) {
-        res.json({ success: true, data: parsed });
-        return;
-      }
-      throw new Error('Invalid JSON structure returned by LLM');
-    } catch (e: any) {
-      console.error('Failed to parse LLM onboarding JSON response:', e);
-      res.status(500).json({ success: false, error: { message: 'AI failed to generate a valid response', details: e.message } });
-    }
+    res.json({ success: true, data: parsed });
   } catch (err) {
     next(err);
   }
@@ -206,14 +210,9 @@ YOU MUST RESPOND ONLY WITH VALID JSON IN THIS FORMAT:
 
 export async function parseOcrDocument(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { rawText, documentType = 'invoice' } = req.body;
+    const rawText = aiText(req.body.rawText, 'Document text', 20000);
+    const documentType = aiText(req.body.documentType || 'invoice', 'Document type', 50);
 
-    if (!rawText) {
-      res.status(400).json({ success: false, error: { code: 'MISSING_TEXT', message: 'rawText is required for document OCR parsing' } });
-      return;
-    }
-
-    const { callLLM } = await import('../../ai/llm-provider');
     const systemPrompt = `You are an OCR extraction AI. Extract the invoice details from the given text. 
 Return ONLY valid JSON matching this structure:
 {
@@ -226,14 +225,10 @@ Return ONLY valid JSON matching this structure:
   "confidenceScore": number (0 to 1)
 }`;
 
-    const llmResult = await callLLM([
+    const parsed = await callLLMJson([
       { role: 'system', content: systemPrompt },
       { role: 'user', content: `Document Type: ${documentType}\n\nRaw Text:\n${rawText}` }
-    ], { json: true });
-
-    if (!llmResult) throw new Error('LLM failed to return a response.');
-
-    const parsed = JSON.parse(llmResult);
+    ]);
     parsed.documentType = documentType;
 
     res.json({
@@ -253,7 +248,6 @@ export async function parseOcrDocumentUpload(req: Request, res: Response, next: 
       return;
     }
 
-    const { callLLM } = await import('../../ai/llm-provider');
     const systemPrompt = `You are a highly accurate OCR extraction AI. Extract the invoice or receipt details from the provided image.
 Return ONLY valid JSON matching this structure:
 {
@@ -268,18 +262,14 @@ Return ONLY valid JSON matching this structure:
 
     const base64Data = file.buffer.toString('base64');
 
-    const llmResult = await callLLM([
+    const parsed = await callLLMJson([
       { role: 'system', content: systemPrompt },
-      { 
-        role: 'user', 
+      {
+        role: 'user',
         content: `Please extract the invoice details from this document.`,
         inlineData: { mimeType: file.mimetype, data: base64Data }
       }
-    ], { json: true });
-
-    if (!llmResult) throw new Error('LLM failed to return a response.');
-
-    const parsed = JSON.parse(llmResult);
+    ]);
     parsed.documentType = 'invoice';
 
     res.json({
@@ -293,14 +283,12 @@ Return ONLY valid JSON matching this structure:
 
 export async function generateSmartReminder(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { customerName, invoiceNumber, amountDue, dueDate, tone = 'friendly' } = req.body;
+    const customerName = aiText(req.body.customerName, 'Customer name', 200);
+    const invoiceNumber = aiText(req.body.invoiceNumber, 'Invoice number', 100);
+    const amountDue = aiText(req.body.amountDue, 'Amount due', 50);
+    const dueDate = aiText(req.body.dueDate, 'Due date', 50, false);
+    const tone = aiText(req.body.tone || 'friendly', 'Tone', 50);
 
-    if (!customerName || !invoiceNumber || !amountDue) {
-      res.status(400).json({ success: false, error: { code: 'MISSING_FIELDS', message: 'customerName, invoiceNumber, and amountDue are required' } });
-      return;
-    }
-
-    const { callLLM } = await import('../../ai/llm-provider');
     const systemPrompt = `You are a Smart Reminder AI for a billing system. Generate an email reminder based on the details provided.
 Return ONLY valid JSON matching this structure:
 {
@@ -310,13 +298,10 @@ Return ONLY valid JSON matching this structure:
   "tone": "string"
 }`;
 
-    const llmResult = await callLLM([
+    const parsed = await callLLMJson([
       { role: 'system', content: systemPrompt },
       { role: 'user', content: `Customer: ${customerName}\nInvoice: ${invoiceNumber}\nAmount Due: ${amountDue}\nDue Date: ${dueDate || 'Not set'}\nRequested Tone: ${tone}` }
-    ], { json: true });
-
-    if (!llmResult) throw new Error('LLM failed to return a response.');
-    const parsed = JSON.parse(llmResult);
+    ]);
 
     res.json({
       success: true,
@@ -329,14 +314,9 @@ Return ONLY valid JSON matching this structure:
 
 export async function generateAiInvoiceTemplate(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { prompt, industry } = req.body;
+    const prompt = aiText(req.body.prompt, 'Prompt', 2000);
+    const industry = aiText(req.body.industry, 'Industry', 200, false);
 
-    if (!prompt) {
-      res.status(400).json({ success: false, error: { code: 'MISSING_PROMPT', message: 'Prompt is required for template generation' } });
-      return;
-    }
-
-    const { callLLM } = await import('../../ai/llm-provider');
     const systemPrompt = `You are an AI Invoice Template Designer. Based on the user prompt and industry, design a JSON specification for an invoice template.
 Return ONLY valid JSON matching this structure:
 {
@@ -361,13 +341,10 @@ Return ONLY valid JSON matching this structure:
   "isDefault": false
 }`;
 
-    const llmResult = await callLLM([
+    const parsed = await callLLMJson([
       { role: 'system', content: systemPrompt },
       { role: 'user', content: `Prompt: ${prompt}\nIndustry: ${industry || 'General'}` }
-    ], { json: true });
-
-    if (!llmResult) throw new Error('LLM failed to return a response.');
-    const parsed = JSON.parse(llmResult);
+    ]);
 
     res.json({
       success: true,

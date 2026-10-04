@@ -10,7 +10,7 @@ export const HeldBillsPage: React.FC<{ onNavigate: (path: string) => void }> = (
   const [isLoading, setIsLoading] = useState(true);
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const { restoreHeldBillToCart } = usePOSCart();
+  const { restoreHeldBillToCart, cart } = usePOSCart();
 
   useEffect(() => {
     fetchHeldBills();
@@ -37,9 +37,12 @@ export const HeldBillsPage: React.FC<{ onNavigate: (path: string) => void }> = (
     if (!confirm('Are you sure you want to discard this parked bill?')) return;
     const res = await apiRequest(`/pos/held-bills/${id}`, { method: 'DELETE' });
     if (res.success) fetchHeldBills();
+    else setError(res.error?.message || 'Failed to discard the parked bill');
   };
 
   const restoreBill = async (id: string) => {
+    // Restoring replaces the till's cart; don't silently drop a sale in progress.
+    if (cart.length > 0 && !confirm(`The current sale has ${cart.length} item(s). Restoring this parked bill will replace it. Continue?`)) return;
     setRestoringId(id);
     setError(null);
     try {

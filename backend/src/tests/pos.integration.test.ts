@@ -21,6 +21,7 @@ import { processReturn } from '../modules/returns/return.controller';
 import { adjustStock } from '../modules/inventory/inventory.controller';
 import { openShift, closeShift } from '../modules/shifts/shift.controller';
 import { createExpense } from '../modules/expenses/expense.controller';
+import { recordCustomerPayment } from '../modules/customers/customer.payment';
 import { Request, Response } from 'express';
 
 let mongoReplSet: MongoMemoryReplSet;
@@ -321,15 +322,15 @@ async function runTestSuite() {
     );
 
     const closeShiftRes = mockRes();
-    // Expected cash: Opening (2000) + Cash Sales (400) - Expense (50) = 2350
+    // Expected cash: Opening (2000) + Cash Sales (400) - Expense (50) - Cash refund from TEST 5 (126) = 2224
     await closeShift(
-      mockReq(tenantCtx, { actualCash: 2350, notes: 'Shift balanced accurately' }),
+      mockReq(tenantCtx, { actualCash: 2224, notes: 'Shift balanced accurately' }),
       closeShiftRes,
       (e) => { if (e) throw e; }
     );
 
-    if (closeShiftRes.data?.success && closeShiftRes.data?.data?.difference === 0) {
-      console.log('✅ TEST 7 PASSED: Shift closed with exact zero cash discrepancy (₹2350 tallied).');
+    if (closeShiftRes.data?.success && closeShiftRes.data?.data?.difference === 0 && closeShiftRes.data?.data?.totals?.refunds === 126) {
+      console.log('✅ TEST 7 PASSED: Shift closed with zero discrepancy (₹2224 tallied, ₹126 cash refund accounted for).');
       passed++;
     } else {
       console.log('❌ TEST 7 FAILED:', closeShiftRes.data);
@@ -397,6 +398,60 @@ async function runTestSuite() {
       passed++;
     } else {
       console.log('❌ TEST 9 FAILED: Rollback failed or did not occur.');
+      failed++;
+    }
+
+    console.log('\n--- TEST 10: Credit (Udhaar) sale settled from the customer account ---');
+    const creditCustomer = await CustomerModel.create({ organizationId: org._id, name: 'Credit Buyer', email: 'credit@buyer.test' });
+    const creditSaleRes = mockRes();
+    await posCheckout(
+      mockReq(tenantCtx, {
+        customerId: creditCustomer._id.toString(),
+        items: [{ productId: product._id.toString(), quantity: 2, unitPrice: 60 }],
+        splitPayments: [{ method: 'cash', amount: 26 }],
+        clientTransactionId: 'tx_credit_sale_test',
+      }),
+      creditSaleRes,
+      (e) => { if (e) throw e; }
+    );
+    const creditInvoice = creditSaleRes.data?.data?.invoice;
+    const owed = creditInvoice?.amountDue;
+    const overpayRes = mockRes();
+    await recordCustomerPayment(mockReq(tenantCtx, { amount: (owed || 0) + 50, method: 'cash' }, { id: creditCustomer._id.toString() }), overpayRes, (e) => { if (e) throw e; });
+    const settleRes = mockRes();
+    await recordCustomerPayment(mockReq(tenantCtx, { amount: owed, method: 'upi' }, { id: creditCustomer._id.toString() }), settleRes, (e) => { if (e) throw e; });
+    const settledInvoice = await InvoiceModel.findById(creditInvoice?._id);
+    const settledCustomer = await CustomerModel.findById(creditCustomer._id);
+    if (
+      owed > 0 &&
+      overpayRes.statusCode === 400 &&
+      settleRes.statusCode === 200 &&
+      settledInvoice?.status === 'paid' &&
+      settledInvoice?.amountDue === 0 &&
+      Math.abs(settledCustomer?.outstandingBalance || 0) < 0.001
+    ) {
+      console.log(`✅ TEST 10 PASSED: Credit sale of ${owed} owed; overpayment rejected; account payment marked the invoice paid and cleared the balance.`);
+      passed++;
+    } else {
+      console.log('❌ TEST 10 FAILED:', { owed, overpay: overpayRes.statusCode, settle: settleRes.data, invoice: settledInvoice?.status, due: settledInvoice?.amountDue, balance: settledCustomer?.outstandingBalance });
+      failed++;
+    }
+
+    console.log('\n--- TEST 11: POS rejects tampered prices, negative quantities and split-line overselling ---');
+    const tamperRes = mockRes();
+    await posCheckout(mockReq(tenantCtx, { items: [{ productId: product._id.toString(), quantity: 1, unitPrice: 0.01 }], splitPayments: [{ method: 'cash', amount: 100 }], clientTransactionId: 'tx_tamper' }), tamperRes, (e) => { if (e) throw e; });
+    const tamperedLine = tamperRes.data?.data?.invoice?.items?.[0];
+    const negRes = mockRes();
+    let negError = '';
+    await posCheckout(mockReq(tenantCtx, { items: [{ productId: product._id.toString(), quantity: -5 }], splitPayments: [], clientTransactionId: 'tx_negative' }), negRes, (e: any) => { negError = e?.message || ''; });
+    const stockNow = (await ProductModel.findById(product._id))!.stockQuantity;
+    let splitError = '';
+    await posCheckout(mockReq(tenantCtx, { items: [{ productId: product._id.toString(), quantity: stockNow }, { productId: product._id.toString(), quantity: 1 }], splitPayments: [{ method: 'cash', amount: 99999 }], clientTransactionId: 'tx_split' }), mockRes(), (e: any) => { splitError = e?.message || ''; });
+    if (tamperedLine?.unitPrice === product.unitPrice && /quantity/i.test(negError) && /Insufficient stock/.test(splitError)) {
+      console.log('✅ TEST 11 PASSED: Catalog price enforced, negative quantity rejected, split-line oversell blocked.');
+      passed++;
+    } else {
+      console.log('❌ TEST 11 FAILED:', { tamperedPrice: tamperedLine?.unitPrice, negError, splitError });
       failed++;
     }
 

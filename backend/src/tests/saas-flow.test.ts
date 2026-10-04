@@ -11,6 +11,8 @@ import { MembershipModel } from '../models/Membership.model';
 import { OrganizationModel } from '../models/Organization.model';
 import { CustomerModel } from '../models/Customer.model';
 import { RecurringProfileModel } from '../models/RecurringProfile.model';
+import { InvoiceModel } from '../models/Invoice.model';
+import { executeRecurringProfileGeneration } from '../jobs/recurring-invoice.job';
 
 let mongo: MongoMemoryServer;
 
@@ -145,6 +147,15 @@ async function run() {
       noop
     );
     check('Recurring profile paused', res.statusCode === 200 && res.data?.data?.status === 'paused');
+
+    // 9b. Overlapping recurring runs bill a period exactly once
+    await RecurringProfileModel.updateOne({ _id: profile!._id }, { status: 'active', nextRunDate: new Date(Date.now() - 1000) });
+    const due = await RecurringProfileModel.findById(profile!._id);
+    const dueCopy = await RecurringProfileModel.findById(profile!._id);
+    const before = await InvoiceModel.countDocuments({ organizationId: orgAId });
+    const results = await Promise.all([executeRecurringProfileGeneration(due!), executeRecurringProfileGeneration(dueCopy!)]);
+    const after = await InvoiceModel.countDocuments({ organizationId: orgAId });
+    check('Concurrent recurring runs create exactly one invoice', after - before === 1 && results.filter(Boolean).length === 1);
 
     // 10. Another tenant's admin cannot take over a shared account by resetting its password
     res = mockRes();

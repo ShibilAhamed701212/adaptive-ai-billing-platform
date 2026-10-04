@@ -4,6 +4,7 @@ import { ToastProvider } from './components/common/Toast';
 import { AppLayout } from './components/layout/AppLayout';
 import { LoginPage } from './pages/auth/LoginPage';
 import { RegisterPage } from './pages/auth/RegisterPage';
+import { ForgotPasswordPage, ResetPasswordPage } from './pages/auth/PasswordResetPages';
 import { OnboardingPage } from './pages/onboarding/OnboardingPage';
 import { DashboardPage } from './pages/dashboard/DashboardPage';
 import { InvoicesListPage } from './pages/invoices/InvoicesListPage';
@@ -101,6 +102,10 @@ function RouterShell() {
       </div>
     );
   }
+
+  // Password reset links work whether or not someone is signed in on this browser.
+  if (currentPath === '/forgot-password') return <ForgotPasswordPage onNavigate={navigate} />;
+  if (currentPath === '/reset-password') return <ResetPasswordPage onNavigate={navigate} />;
 
   // Unauthenticated routes
   if (!user) {

@@ -305,14 +305,19 @@ export const AiCopilotDrawer: React.FC<AiCopilotDrawerProps> = ({
                   style={{ marginTop: '1.25rem', padding: '1.25rem', border: '1px solid #c7d2fe', animation: 'fadeIn 0.2s ease' }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-                    <span className="badge badge-paid">
-                      <CheckCircle2 size={12} /> Confidence: {Math.round(draftResult.confidenceScore * 100)}%
+                    <span className={`badge ${draftResult.items.length === 0 ? 'badge-overdue' : draftResult.confidenceScore >= 0.8 ? 'badge-paid' : 'badge-sent'}`}>
+                      <CheckCircle2 size={12} /> Confidence: {Math.round((draftResult.confidenceScore || 0) * 100)}%
                     </span>
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Database Match</span>
                   </div>
 
                   <p style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
-                    Matched Client: <span style={{ color: 'var(--accent-primary)' }}>{draftResult.customerName}</span>
+                    Matched Client:{' '}
+                    {draftResult.customerName ? (
+                      <span style={{ color: 'var(--accent-primary)' }}>{draftResult.customerName}</span>
+                    ) : (
+                      <span style={{ color: 'var(--color-danger)' }}>Not matched, choose one before issuing</span>
+                    )}
                   </p>
 
                   <div style={{ background: '#f8fafc', borderRadius: 'var(--radius-sm)', padding: '0.75rem', marginBottom: '0.75rem', border: '1px solid #e2e8f0' }}>
@@ -342,7 +347,7 @@ export const AiCopilotDrawer: React.FC<AiCopilotDrawerProps> = ({
                     {draftResult.explanation}
                   </p>
 
-                  {onApplyDraftToInvoice && (
+                  {onApplyDraftToInvoice && draftResult.items.length > 0 && (
                     <button
                       type="button"
                       className="btn btn-primary btn-sm"

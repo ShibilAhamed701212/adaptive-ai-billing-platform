@@ -15,6 +15,16 @@ declare global {
   }
 }
 
+const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+/** POSTs a viewer may make: calculations/AI drafts that write nothing, and actions on their own account. */
+const VIEWER_ALLOWED_WRITES = [
+  /^\/api\/v1\/invoices\/preview$/,
+  /^\/api\/v1\/ai\//,
+  /^\/api\/v1\/organizations$/,
+  /^\/api\/v1\/organizations\/switch$/,
+  /^\/api\/v1\/organizations\/invitations\/[^/]+\/(accept|decline)$/,
+];
+
 export async function tenantMiddleware(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const authHeader = req.headers.authorization;
@@ -45,7 +55,7 @@ export async function tenantMiddleware(req: Request, res: Response, next: NextFu
     // A JWT is a short-lived credential, not the source of truth for access. Re-read
     // the user and membership so a role change or deactivation takes effect immediately.
     const [user, membership] = await Promise.all([
-      UserModel.findById(decoded.userId).select('isActive'),
+      UserModel.findById(decoded.userId).select('isActive passwordChangedAt'),
       MembershipModel.findOne({
         userId: decoded.userId,
         organizationId: decoded.organizationId,
@@ -53,7 +63,12 @@ export async function tenantMiddleware(req: Request, res: Response, next: NextFu
       }).select('role'),
     ]);
 
-    if (!user || user.isActive === false || !membership) {
+    // A password change (reset or admin-set) signs out every session issued before it.
+    const issuedAt = (decoded as any).iat as number | undefined;
+    const passwordChangedAt = user?.passwordChangedAt ? Math.floor(user.passwordChangedAt.getTime() / 1000) : 0;
+    const issuedBeforePasswordChange = Boolean(passwordChangedAt && issuedAt && issuedAt < passwordChangedAt);
+
+    if (!user || user.isActive === false || !membership || issuedBeforePasswordChange) {
       res.status(401).json({
         success: false,
         error: { code: 'SESSION_REVOKED', message: 'Your organization access is no longer active' },
@@ -62,6 +77,13 @@ export async function tenantMiddleware(req: Request, res: Response, next: NextFu
     }
 
     req.tenant = { ...decoded, role: membership.role };
+
+    // The viewer role is read-only everywhere, not just on routes that remember to check roles.
+    const path = req.originalUrl.split('?')[0];
+    if (membership.role === 'viewer' && !READ_METHODS.has(req.method) && !VIEWER_ALLOWED_WRITES.some((rule) => rule.test(path))) {
+      res.status(403).json({ success: false, error: { code: 'READ_ONLY_ROLE', message: 'Your role (viewer) has read-only access. Ask an admin for more access.' } });
+      return;
+    }
     next();
   } catch (err: any) {
     res.status(401).json({

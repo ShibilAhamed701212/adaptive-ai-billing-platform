@@ -16,6 +16,7 @@ import {
   type BusinessType,
 } from '@billing/shared';
 import { setSessionCookie } from '../../core/security/session-cookie';
+import { pickFields } from '../../core/utils/pick';
 
 const VALID_BUSINESS_TYPES: BusinessType[] = ['retail', 'saas', 'services', 'general'];
 const VALID_BILLING_MODELS = ['retail', 'subscription', 'usage_based', 'rental', 'professional_services', 'healthcare', 'logistics', 'custom'];
@@ -296,7 +297,15 @@ export async function updateOrganizationSettings(req: Request, res: Response, ne
       return;
     }
 
-    if (name) org.name = String(name).trim();
+    // Structural changes (which modules exist, what kind of business this is) are admin-only;
+    // managers may edit the profile and invoicing preferences.
+    const isAdmin = req.tenant!.role === 'admin';
+    if (!isAdmin && (enabledModules !== undefined || businessType !== undefined || isOnboarded !== undefined)) {
+      res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Only administrators can change modules, business type or onboarding state' } });
+      return;
+    }
+
+    if (name) org.name = String(name).trim().slice(0, 200);
     if (businessType && VALID_BUSINESS_TYPES.includes(businessType)) org.businessType = businessType;
     if (Array.isArray(enabledModules)) {
       // Validate modules against a known list (Phase 11 & 12 Requirement)
@@ -327,11 +336,40 @@ export async function updateOrganizationSettings(req: Request, res: Response, ne
       };
     }
     if (settings && typeof settings === 'object') {
+      const allowed = pickFields(settings, [
+        'currency', 'currencySymbol', 'timezone', 'dateFormat', 'taxSystem', 'invoicePrefix', 'paymentTermsDays',
+        'logoUrl', 'primaryColor', 'accentColor', 'gstinOrTaxId', 'website', 'nextInvoiceNumber',
+      ] as const) as Record<string, any>;
+      if (allowed.taxSystem !== undefined && !['GST', 'VAT', 'SALES_TAX', 'NONE'].includes(allowed.taxSystem)) {
+        res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Unknown tax system' } });
+        return;
+      }
+      if (allowed.paymentTermsDays !== undefined) {
+        const days = Number(allowed.paymentTermsDays);
+        if (!Number.isInteger(days) || days < 0 || days > 365) {
+          res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Payment terms must be 0-365 days' } });
+          return;
+        }
+        allowed.paymentTermsDays = days;
+      }
+      if (allowed.nextInvoiceNumber !== undefined) {
+        // Invoice numbers must stay unique and sequential: the counter may only move forward.
+        const next = Number(allowed.nextInvoiceNumber);
+        if (!Number.isInteger(next) || next < ((org.settings as any).nextInvoiceNumber || 1)) {
+          res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'The next invoice number can only be increased' } });
+          return;
+        }
+        allowed.nextInvoiceNumber = next;
+      }
+      if (allowed.logoUrl && !/^(https?:\/\/|data:image\/)/i.test(String(allowed.logoUrl))) {
+        res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Logo must be an http(s) URL or an uploaded image' } });
+        return;
+      }
       // Deep-merge so partial profile updates never wipe existing settings.
       org.settings = {
         ...org.settings,
-        ...settings,
-        address: { ...(org.settings as any).address, ...(settings.address || {}) },
+        ...allowed,
+        address: { ...(org.settings as any).address, ...pickFields(settings.address, ['street', 'city', 'state', 'postalCode', 'country'] as const) },
       } as any;
     }
 

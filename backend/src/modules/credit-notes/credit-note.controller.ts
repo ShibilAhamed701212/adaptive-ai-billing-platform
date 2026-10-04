@@ -66,6 +66,17 @@ export async function createCreditNote(req: Request, res: Response, next: NextFu
       return;
     }
 
+    // Credit can only be raised against an invoice that was actually issued.
+    if (!['approved', 'sent', 'partially_paid', 'overdue', 'paid'].includes(invoice.status)) {
+      res.status(400).json({ success: false, error: { code: 'INVOICE_NOT_CREDITABLE', message: `Cannot issue a credit note against a '${invoice.status}' invoice` } });
+      return;
+    }
+    const badLine = items.find((item: any) => !(Number(item.quantity ?? 1) > 0) || !(Number(item.unitPrice) >= 0) || !(Number(item.taxRate ?? 0) >= 0));
+    if (badLine) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Credit note lines need a positive quantity and non-negative price and tax rate' } });
+      return;
+    }
+
     const org = await OrganizationModel.findById(orgId);
 
     // Calculate credit note totals
@@ -94,6 +105,21 @@ export async function createCreditNote(req: Request, res: Response, next: NextFu
     });
 
     const totalAmount = Math.round((subtotal + taxTotal) * 100) / 100;
+    if (totalAmount <= 0) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Credit note total must be greater than zero' } });
+      return;
+    }
+
+    // Total credit across all non-void notes may never exceed what was invoiced.
+    const [{ credited = 0 } = {}] = await CreditNoteModel.aggregate([
+      { $match: { organizationId: new mongoose.Types.ObjectId(orgId), originalInvoiceId: invoice._id, status: { $ne: 'void' } } },
+      { $group: { _id: null, credited: { $sum: '$totalAmount' } } },
+    ]);
+    const creditable = Math.round((invoice.grandTotal - credited) * 100) / 100;
+    if (totalAmount > creditable + 0.001) {
+      res.status(400).json({ success: false, error: { code: 'CREDIT_EXCEEDS_INVOICE', message: `Credit (${totalAmount}) exceeds what remains creditable on this invoice (${Math.max(0, creditable)})` } });
+      return;
+    }
 
     // Generate credit note number
     const count = await CreditNoteModel.countDocuments({ organizationId: new mongoose.Types.ObjectId(orgId) });

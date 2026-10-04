@@ -109,8 +109,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
 
         <form onSubmit={handleLogin}>
           <div className="form-group">
-            <label className="form-label">Email Address</label>
+            <label className="form-label" htmlFor="login-email">Email Address</label>
             <input
+              id="login-email"
+              autoComplete="email"
               type="email"
               className="form-input"
               required
@@ -121,8 +123,19 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
           </div>
 
           <div className="form-group">
-            <label className="form-label">Password</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <label className="form-label" htmlFor="login-password">Password</label>
+              <button
+                type="button"
+                onClick={() => onNavigate('/forgot-password')}
+                style={{ background: 'none', border: 'none', color: 'var(--accent-secondary)', fontWeight: 600, cursor: 'pointer', fontSize: '0.8rem', padding: 0 }}
+              >
+                Forgot password?
+              </button>
+            </div>
             <input
+              id="login-password"
+              autoComplete="current-password"
               type="password"
               className="form-input"
               required

@@ -28,6 +28,18 @@ services:
       - key: CLIENT_URL
         value: https://adaptive-billing-web.onrender.com
       - key: JWT_SECRET
-        sync: false
+        generateValue: true
+      # Required: the API refuses to start in production without these two.
       - key: MONGODB_URI
+        sync: false
+      # Needed for password reset emails
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
         sync: false

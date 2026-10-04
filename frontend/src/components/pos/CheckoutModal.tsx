@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, Check } from 'lucide-react';
 import { useCurrencySymbol } from '../../utils/currency';
 import { useTaxSystem } from '../../utils/tax';
@@ -34,6 +34,18 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [storeCredit, setStoreCredit] = useState<number | ''>('');
   const [loyaltyPoints, setLoyaltyPoints] = useState<number | ''>('');
   const [credit, setCredit] = useState<number | ''>('');
+
+  // The modal stays mounted between sales: start every checkout fresh, defaulting to exact cash.
+  useEffect(() => {
+    if (!isOpen) return;
+    setCash(total);
+    setCard('');
+    setUpi('');
+    setStoreCredit('');
+    setLoyaltyPoints('');
+    setCredit('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { SupplierModel } from '../../models/Supplier.model';
 import { logAuditEvent } from '../../core/audit/audit.service';
 import { parsePagination, containsText } from '../../core/utils/query';
+import { pickFields } from '../../core/utils/pick';
 
 export async function listSuppliers(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -85,8 +86,9 @@ export async function updateSupplier(req: Request, res: Response, next: NextFunc
     const orgId = req.tenant!.organizationId;
     const supplier = await SupplierModel.findOneAndUpdate(
       { _id: req.params.id, organizationId: new mongoose.Types.ObjectId(orgId) },
-      req.body,
-      { new: true }
+      // outstandingBalance is driven by purchases/payments, never set directly.
+      { $set: pickFields(req.body, ['name', 'email', 'phone', 'companyName', 'gstinOrTaxId', 'address', 'isActive'] as const) },
+      { new: true, runValidators: true }
     );
 
     if (!supplier) {

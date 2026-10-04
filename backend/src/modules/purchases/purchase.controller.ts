@@ -62,10 +62,17 @@ export async function createPurchase(req: Request, res: Response, next: NextFunc
     let taxTotal = 0;
     const processedItems = [];
 
+    const round2 = (n: number) => Math.round(n * 100) / 100;
     for (const item of items) {
-      const lineSubtotal = Number(item.quantity) * Number(item.unitPrice);
-      const lineTax = lineSubtotal * (Number(item.taxRate) || 0);
-      const lineTotal = lineSubtotal + lineTax;
+      const qty = Number(item.quantity);
+      const cost = Number(item.unitPrice);
+      const rate = Number(item.taxRate) || 0;
+      if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(cost) || cost < 0 || rate < 0) {
+        throw new Error(`Purchase line ${item.name || item.sku || item.productId} needs a positive quantity and a non-negative cost`);
+      }
+      const lineSubtotal = round2(qty * cost);
+      const lineTax = round2(lineSubtotal * rate);
+      const lineTotal = round2(lineSubtotal + lineTax);
 
       subtotal += lineSubtotal;
       taxTotal += lineTax;
@@ -82,8 +89,14 @@ export async function createPurchase(req: Request, res: Response, next: NextFunc
       });
     }
 
-    const grandTotal = subtotal + taxTotal;
-    const amountDue = Math.max(0, grandTotal - Number(amountPaid));
+    subtotal = round2(subtotal);
+    taxTotal = round2(taxTotal);
+    const grandTotal = round2(subtotal + taxTotal);
+    const paid = Number(amountPaid);
+    if (!Number.isFinite(paid) || paid < 0 || paid > grandTotal + 0.001) {
+      throw new Error(`Amount paid must be between 0 and the purchase total (${grandTotal})`);
+    }
+    const amountDue = round2(Math.max(0, grandTotal - paid));
 
     const finalPurchaseNumber = purchaseNumber || `PO-${Date.now().toString().slice(-6)}`;
 
@@ -113,7 +126,9 @@ export async function createPurchase(req: Request, res: Response, next: NextFunc
           organizationId: new mongoose.Types.ObjectId(orgId),
         }).session(session);
 
-        if (product) {
+        // Never record a received line that doesn't land in this tenant's stock.
+        if (!product) throw new Error(`Product ${item.name || item.productId} not found in your catalog`);
+        {
           const previousStock = product.stockQuantity || 0;
           const newStock = previousStock + item.quantity;
           product.stockQuantity = newStock;

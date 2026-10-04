@@ -1,6 +1,7 @@
 import { InvoiceModel } from '../../models/Invoice.model';
 import { CustomerModel } from '../../models/Customer.model';
 import { PaymentModel } from '../../models/Payment.model';
+import { OrganizationModel } from '../../models/Organization.model';
 import { AskBusinessQueryResponse } from '@billing/shared';
 import { callLLM } from '../llm-provider';
 import mongoose from 'mongoose';
@@ -10,30 +11,45 @@ export async function processAskBusinessQuery(
   query: string
 ): Promise<AskBusinessQueryResponse> {
   const orgObjId = new mongoose.Types.ObjectId(organizationId);
+  // Only issued invoices count as revenue/receivables; drafts and voided documents never do.
+  const issued = { organizationId: orgObjId, status: { $nin: ['draft', 'pending_approval', 'void', 'cancelled'] } };
 
-  // Aggregation tools
-  const [totalInvoices, totalPayments, customers] = await Promise.all([
-    InvoiceModel.find({ organizationId: orgObjId }).lean(),
-    PaymentModel.find({ organizationId: orgObjId }).lean(),
-    CustomerModel.find({ organizationId: orgObjId }).lean(),
+  // Totals are aggregated in the database; only small samples are loaded into memory.
+  const [org, invoiceAgg, paymentAgg, customerCount, openInvoices, recentInvoices, topCustomers] = await Promise.all([
+    OrganizationModel.findById(orgObjId).select('settings.currencySymbol').lean(),
+    InvoiceModel.aggregate([
+      { $match: issued },
+      { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$grandTotal' }, outstanding: { $sum: '$amountDue' } } },
+    ]),
+    PaymentModel.aggregate([
+      { $match: { organizationId: orgObjId, status: 'completed' } },
+      { $group: { _id: null, collected: { $sum: '$amount' } } },
+    ]),
+    CustomerModel.countDocuments({ organizationId: orgObjId }),
+    InvoiceModel.find({ ...issued, amountDue: { $gt: 0 } }).sort({ amountDue: -1 }).limit(5).select('invoiceNumber amountDue customerSnapshot.name status').lean(),
+    InvoiceModel.find(issued).sort({ createdAt: -1 }).limit(5).select('invoiceNumber grandTotal amountDue status').lean(),
+    CustomerModel.find({ organizationId: orgObjId }).sort({ outstandingBalance: -1 }).limit(5).select('name outstandingBalance').lean(),
   ]);
 
-  const totalRevenue = totalInvoices.reduce((sum, inv) => sum + inv.grandTotal, 0);
-  const totalCollected = totalPayments.reduce((sum, pay) => sum + pay.amount, 0);
-  const totalOutstanding = totalInvoices.reduce((sum, inv) => sum + (inv.amountDue || 0), 0);
-  const overdueInvoices = totalInvoices.filter((inv) => inv.status === 'overdue' || inv.amountDue > 0);
+  const cs = (org as any)?.settings?.currencySymbol || '₹';
+  const totalInvoiceCount: number = invoiceAgg[0]?.count || 0;
+  const totalRevenue: number = invoiceAgg[0]?.revenue || 0;
+  const totalOutstanding: number = invoiceAgg[0]?.outstanding || 0;
+  const totalCollected: number = paymentAgg[0]?.collected || 0;
+  const overdueCount = await InvoiceModel.countDocuments({ ...issued, amountDue: { $gt: 0 } });
 
   // 1. Attempt LLM reasoning with live financial telemetry
   const systemPrompt = `You are the AI Financial Intelligence Agent for an Adaptive Multi-Tenant Billing Platform.
 Answer the user's business question accurately and concisely using this real-time financial telemetry:
-- Total Invoices: ${totalInvoices.length}
-- Total Revenue Invoiced: ₹${totalRevenue.toLocaleString()}
-- Total Amount Collected: ₹${totalCollected.toLocaleString()}
-- Total Accounts Receivable Outstanding: ₹${totalOutstanding.toLocaleString()}
-- Number of Overdue Invoices: ${overdueInvoices.length}
-- Number of Active Customers: ${customers.length}
-- Sample Customers: ${JSON.stringify(customers.slice(0, 5).map((c) => ({ name: c.name, balance: c.outstandingBalance })))}
-- Recent Invoices: ${JSON.stringify(totalInvoices.slice(0, 5).map((i) => ({ number: i.invoiceNumber, total: i.grandTotal, due: i.amountDue, status: i.status })))}
+- Currency symbol: ${cs}
+- Total Issued Invoices: ${totalInvoiceCount}
+- Total Revenue Invoiced: ${cs}${totalRevenue.toLocaleString()}
+- Total Amount Collected: ${cs}${totalCollected.toLocaleString()}
+- Total Accounts Receivable Outstanding: ${cs}${totalOutstanding.toLocaleString()}
+- Number of Invoices With Money Owed: ${overdueCount}
+- Number of Customers: ${customerCount}
+- Customers With Highest Balances: ${JSON.stringify(topCustomers.map((c) => ({ name: c.name, balance: c.outstandingBalance })))}
+- Recent Invoices: ${JSON.stringify(recentInvoices.map((i) => ({ number: i.invoiceNumber, total: i.grandTotal, due: i.amountDue, status: i.status })))}
 
 Respond with JSON format:
 {
@@ -61,7 +77,7 @@ Respond with JSON format:
           answer: parsed.answer,
           chartData: parsed.chartData || {
             labels: ['Collected', 'Outstanding'],
-            datasets: [{ label: 'Revenue (₹)', data: [totalCollected, totalOutstanding] }],
+            datasets: [{ label: `Revenue (${cs})`, data: [totalCollected, totalOutstanding] }],
           },
           sourcesUsed: ['tenant financial telemetry', 'invoices & payments ledger'],
           suggestedFollowUps: parsed.suggestedFollowUps || [
@@ -95,12 +111,12 @@ Respond with JSON format:
 
   if (lowerQuery.includes('revenue') || lowerQuery.includes('sales') || lowerQuery.includes('earned') || lowerQuery.includes('income')) {
     return {
-      answer: `Your total invoiced revenue across **${totalInvoices.length} invoices** is **₹${totalRevenue.toLocaleString()}**, with **₹${totalCollected.toLocaleString()}** successfully collected and **₹${totalOutstanding.toLocaleString()}** outstanding.`,
+      answer: `Your total invoiced revenue across **${totalInvoiceCount} invoices** is **${cs}${totalRevenue.toLocaleString()}**, with **${cs}${totalCollected.toLocaleString()}** successfully collected and **${cs}${totalOutstanding.toLocaleString()}** outstanding.`,
       chartData: {
         labels: ['Collected', 'Outstanding'],
         datasets: [
           {
-            label: 'Revenue Breakdown (₹)',
+            label: `Revenue Breakdown (${cs})`,
             data: [totalCollected, totalOutstanding],
           },
         ],
@@ -115,25 +131,22 @@ Respond with JSON format:
   }
 
   if (lowerQuery.includes('overdue') || lowerQuery.includes('unpaid') || lowerQuery.includes('late') || lowerQuery.includes('debt') || lowerQuery.includes('due')) {
-    const topOverdue = [...totalInvoices]
-      .filter((i) => (i.amountDue || 0) > 0)
-      .sort((a, b) => (b.amountDue || 0) - (a.amountDue || 0))
-      .slice(0, 5);
+    const topOverdue = openInvoices;
 
     const customerNames = topOverdue.map((i) => i.customerSnapshot?.name || 'Customer');
     const amounts = topOverdue.map((i) => i.amountDue || 0);
 
     return {
-      answer: `You have **${overdueInvoices.length} outstanding/overdue invoice(s)** totaling **₹${totalOutstanding.toLocaleString()}**.\n\n${
+      answer: `You have **${overdueCount} outstanding/overdue invoice(s)** totaling **${cs}${totalOutstanding.toLocaleString()}**.\n\n${
         customerNames.length > 0
-          ? `Top pending balance: **${customerNames[0]}** with **₹${amounts[0].toLocaleString()}** due.`
+          ? `Top pending balance: **${customerNames[0]}** with **${cs}${amounts[0].toLocaleString()}** due.`
           : 'All invoices are currently settled!'
       }`,
       chartData: {
         labels: customerNames.length > 0 ? customerNames : ['No Overdue'],
         datasets: [
           {
-            label: 'Amount Due (₹)',
+            label: `Amount Due (${cs})`,
             data: amounts.length > 0 ? amounts : [0],
           },
         ],
@@ -154,12 +167,12 @@ Respond with JSON format:
     const week4 = Math.round(totalOutstanding * 0.1);
 
     return {
-      answer: `**30-Day Cashflow Projection**:\n- **Week 1 (Days 0-7):** Projected inflow ₹${week1.toLocaleString()}\n- **Week 2 (Days 8-15):** Projected inflow ₹${week2.toLocaleString()}\n- **Week 3 (Days 16-22):** Projected inflow ₹${week3.toLocaleString()}\n- **Week 4 (Days 23-30):** Projected inflow ₹${week4.toLocaleString()}\n\nTotal expected recovery: **₹${totalOutstanding.toLocaleString()}** based on active payment terms and historical settlement speed.`,
+      answer: `**30-Day Cashflow Projection**:\n- **Week 1 (Days 0-7):** Projected inflow ${cs}${week1.toLocaleString()}\n- **Week 2 (Days 8-15):** Projected inflow ${cs}${week2.toLocaleString()}\n- **Week 3 (Days 16-22):** Projected inflow ${cs}${week3.toLocaleString()}\n- **Week 4 (Days 23-30):** Projected inflow ${cs}${week4.toLocaleString()}\n\nTotal expected recovery: **${cs}${totalOutstanding.toLocaleString()}** based on active payment terms and historical settlement speed.`,
       chartData: {
         labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
         datasets: [
           {
-            label: 'Projected Inflow (₹)',
+            label: `Projected Inflow (${cs})`,
             data: [week1, week2, week3, week4],
           },
         ],
@@ -174,13 +187,13 @@ Respond with JSON format:
 
   if (lowerQuery.includes('customer') || lowerQuery.includes('client') || lowerQuery.includes('debtor')) {
     return {
-      answer: `You have **${customers.length} active customer accounts** in the system. Overall outstanding receivables across all accounts stand at **₹${totalOutstanding.toLocaleString()}**.`,
+      answer: `You have **${customerCount} active customer accounts** in the system. Overall outstanding receivables across all accounts stand at **${cs}${totalOutstanding.toLocaleString()}**.`,
       chartData: {
-        labels: customers.slice(0, 5).map((c) => c.name),
+        labels: topCustomers.map((c) => c.name),
         datasets: [
           {
-            label: 'Outstanding Balance (₹)',
-            data: customers.slice(0, 5).map((c) => c.outstandingBalance || 0),
+            label: `Outstanding Balance (${cs})`,
+            data: topCustomers.map((c) => c.outstandingBalance || 0),
           },
         ],
       },
@@ -193,12 +206,12 @@ Respond with JSON format:
   }
 
   return {
-    answer: `Financial overview:\n- **Total Invoiced:** ₹${totalRevenue.toLocaleString()}\n- **Total Collected:** ₹${totalCollected.toLocaleString()}\n- **Outstanding Receivables:** ₹${totalOutstanding.toLocaleString()}\n- **Active Customers:** ${customers.length}\n- **Invoices Awaiting Settlement:** ${overdueInvoices.length}`,
+    answer: `Financial overview:\n- **Total Invoiced:** ${cs}${totalRevenue.toLocaleString()}\n- **Total Collected:** ${cs}${totalCollected.toLocaleString()}\n- **Outstanding Receivables:** ${cs}${totalOutstanding.toLocaleString()}\n- **Active Customers:** ${customerCount}\n- **Invoices Awaiting Settlement:** ${overdueCount}`,
     chartData: {
       labels: ['Invoiced', 'Collected', 'Receivables'],
       datasets: [
         {
-          label: 'Financial Snapshot (₹)',
+          label: `Financial Snapshot (${cs})`,
           data: [totalRevenue, totalCollected, totalOutstanding],
         },
       ],

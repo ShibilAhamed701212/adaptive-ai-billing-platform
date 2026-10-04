@@ -110,8 +110,11 @@ export const POSCartProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const clearCart = () => {
     setCart([]);
     setBillDiscount(0);
+    // A new cart is a new shopper: don't carry the previous sale's customer over.
+    setSelectedCustomerId('');
     sessionStorage.removeItem('pos_active_cart');
     sessionStorage.removeItem('pos_bill_discount');
+    sessionStorage.removeItem('pos_selected_customer');
   };
 
   const restoreHeldBillToCart = (heldBill: any) => {
@@ -134,9 +137,8 @@ export const POSCartProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } as CartItem));
 
     setCart(restoredItems);
-    if (heldBill.customerId) {
-      setSelectedCustomerId(String(heldBill.customerId));
-    }
+    // The parked bill's own customer (or none): never keep the previous sale's customer.
+    setSelectedCustomerId(heldBill.customerId ? String(heldBill.customerId) : '');
   };
 
   const subtotal = cart.reduce((sum, item) => {

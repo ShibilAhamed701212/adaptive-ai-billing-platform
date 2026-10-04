@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useCurrencySymbol } from '../../utils/currency';
+import { useAuth } from '../../context/AuthContext';
 
 interface PaymentsPageProps {
   onNavigate?: (path: string) => void;
@@ -22,6 +23,7 @@ interface PaymentsPageProps {
 
 export const PaymentsPage: React.FC<PaymentsPageProps> = ({ onNavigate }) => {
   const currencySymbol = useCurrencySymbol();
+  const { organization } = useAuth();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -129,10 +131,12 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({ onNavigate }) => {
 
   // Export CSV
   const handleExportCSV = () => {
-    const headers = ['Payment Date', 'Invoice ID', 'Method', 'Transaction Ref', 'Amount (INR)', 'Status'];
+    const headers = ['Payment Date', 'Invoice ID', 'Method', 'Transaction Ref', `Amount (${organization?.settings?.currency || 'INR'})`, 'Status'];
     const escapeCSV = (val: any) => {
-      const str = String(val ?? '');
-      return str.includes(',') || str.includes('"') || str.includes('\n') ? `"${str.replace(/"/g, '""')}"` : str;
+      let str = String(val ?? '');
+      // Neutralise spreadsheet formulas (=, +, -, @) so opening the export can't execute them.
+      if (/^[=+\-@\t\r]/.test(str)) str = `'${str}`;
+      return /[",\n\r]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
     };
     const rows = filteredPayments.map((p) => [
       escapeCSV(p.paymentDate),

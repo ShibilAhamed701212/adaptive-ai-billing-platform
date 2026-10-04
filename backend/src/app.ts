@@ -5,7 +5,8 @@ import path from 'path';
 import fs from 'fs';
 import { errorHandler } from './core/middleware/error.middleware';
 import { rateLimiter } from './core/middleware/rate-limiter.middleware';
-import { ENV } from './config/env';
+import { ENV, IS_PRODUCTION } from './config/env';
+import { isDatabaseConnected } from './config/db';
 
 import authRoutes from './modules/auth/auth.routes';
 import orgRoutes from './modules/organizations/organization.routes';
@@ -35,6 +36,9 @@ import agencyRoutes from './modules/agency/agency.routes';
 
 export function createApp(): Express {
   const app = express();
+  // Render (and most PaaS) terminate TLS at one proxy hop; trust it so req.ip is the real client
+  // IP (per-client rate limiting) instead of the proxy's address shared by every user.
+  if (IS_PRODUCTION) app.set('trust proxy', 1);
 
   // Global Middleware
   const allowedOrigins = ENV.CLIENT_URL.split(',').map((origin) => origin.trim()).filter(Boolean);
@@ -46,6 +50,26 @@ export function createApp(): Express {
       return callback(null, false);
     },
   }));
+  // CSRF guard: the session cookie is SameSite=None in production, so a foreign site could make a
+  // user's browser send state-changing requests. Browsers always attach Origin to cross-site
+  // POST/PUT/PATCH/DELETE, so reject any origin that is neither allow-listed nor this host.
+  app.use((req, res, next) => {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+    const origin = req.get('origin');
+    if (!origin) return next();
+    let sameHost = false;
+    let localDev = false;
+    try {
+      const url = new URL(origin);
+      sameHost = url.host === req.get('host');
+      // Dev servers on any local port (the Vite proxy rewrites Host, so sameHost can't match).
+      localDev = !IS_PRODUCTION && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+    } catch {
+      sameHost = false;
+    }
+    if (sameHost || localDev || allowedOrigins.includes(origin)) return next();
+    res.status(403).json({ success: false, error: { code: 'FORBIDDEN_ORIGIN', message: 'Cross-site request blocked' } });
+  });
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
   app.use(morgan('dev'));
@@ -71,8 +95,11 @@ export function createApp(): Express {
 
   // Health Check
   app.get('/api/v1/health', (req, res) => {
-    res.json({
-      status: 'healthy',
+    // Report unhealthy without a database so the platform does not route traffic to a broken instance.
+    const dbConnected = isDatabaseConnected();
+    res.status(dbConnected ? 200 : 503).json({
+      status: dbConnected ? 'healthy' : 'degraded',
+      database: dbConnected ? 'connected' : 'disconnected',
       service: 'Adaptive AI-Powered Billing API',
       timestamp: new Date().toISOString(),
       version: '1.1.0',

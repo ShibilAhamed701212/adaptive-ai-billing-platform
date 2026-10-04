@@ -15,7 +15,8 @@ import multer from 'multer';
 import { importProducts } from './product.import';
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage() });
+// Bounded so one upload can't exhaust server memory.
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
 
 router.use(tenantMiddleware);
 
@@ -24,7 +25,7 @@ router.get('/barcode/:barcode', getProductByBarcode);
 router.get('/:id', getProduct);
 router.post('/', validate(createProductSchema), createProduct);
 router.patch('/:id', validate(updateProductSchema), updateProduct);
-router.post('/import', upload.single('file'), importProducts);
+router.post('/import', requireRole(['admin', 'manager']), upload.single('file'), importProducts);
 
 router.delete('/:id', requireRole(['admin', 'manager']), deleteProduct);
 

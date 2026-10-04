@@ -15,6 +15,13 @@ import {
 } from '@billing/shared';
 import mongoose from 'mongoose';
 import { setSessionCookie, clearSessionCookie } from '../../core/security/session-cookie';
+import crypto from 'crypto';
+import { PasswordResetTokenModel } from '../../models/PasswordResetToken.model';
+import { isMailConfigured, sendMail } from '../../core/email/mailer';
+import { IS_PRODUCTION } from '../../config/env';
+
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
+const hashResetToken = (token: string) => crypto.createHash('sha256').update(token).digest('hex');
 
 function inferBusinessType(billingModel?: string): BusinessType {
   switch (billingModel) {
@@ -335,4 +342,70 @@ export async function getMe(req: Request, res: Response, next: NextFunction): Pr
 export async function logout(_req: Request, res: Response): Promise<void> {
   clearSessionCookie(res);
   res.status(204).end();
+}
+
+/**
+ * Start a password reset. Always answers the same way so the endpoint cannot be used to discover
+ * which emails have accounts.
+ */
+export async function forgotPassword(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const email = String(req.body.email).toLowerCase().trim();
+    const user = await UserModel.findOne({ email });
+
+    if (user && user.isActive !== false) {
+      const token = crypto.randomBytes(32).toString('hex');
+      await PasswordResetTokenModel.deleteMany({ userId: user._id });
+      await PasswordResetTokenModel.create({
+        userId: user._id,
+        tokenHash: hashResetToken(token),
+        expiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MS),
+      });
+
+      const appUrl = ENV.CLIENT_URL.split(',')[0].trim().replace(/\/$/, '');
+      const link = `${appUrl}/reset-password?token=${token}`;
+      if (isMailConfigured()) {
+        try {
+          await sendMail({
+            to: user.email,
+            subject: 'Reset your password',
+            text: `Hi ${user.name},\n\nUse this link to choose a new password. It expires in 1 hour.\n\n${link}\n\nIf you didn't ask for this, you can ignore this email.`,
+          });
+        } catch (mailErr: any) {
+          console.error(`❌ [Auth] Password reset email failed: ${mailErr.message}`);
+        }
+      } else if (IS_PRODUCTION) {
+        console.error('❌ [Auth] Password reset requested but SMTP is not configured; no email was sent.');
+      } else {
+        console.log(`🔑 [Auth] Development password reset link for ${user.email}: ${link}`);
+      }
+    }
+
+    res.json({ success: true, data: { message: 'If an account exists for that email, a reset link has been sent.' } });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function resetPassword(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { token, password } = req.body;
+    const record = await PasswordResetTokenModel.findOne({ tokenHash: hashResetToken(token), expiresAt: { $gt: new Date() } });
+    const user = record ? await UserModel.findById(record.userId) : null;
+    if (!record || !user || user.isActive === false) {
+      res.status(400).json({ success: false, error: { code: 'INVALID_RESET_TOKEN', message: 'This reset link is invalid or has expired. Request a new one.' } });
+      return;
+    }
+
+    user.passwordHash = await bcrypt.hash(password, await bcrypt.genSalt(10));
+    user.passwordChangedAt = new Date();
+    await user.save();
+    // Single use: drop this and any other outstanding links for the account.
+    await PasswordResetTokenModel.deleteMany({ userId: user._id });
+
+    clearSessionCookie(res);
+    res.json({ success: true, data: { message: 'Password updated. You can now sign in.' } });
+  } catch (err) {
+    next(err);
+  }
 }
