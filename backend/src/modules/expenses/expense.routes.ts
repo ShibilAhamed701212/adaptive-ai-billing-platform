@@ -8,7 +8,7 @@ router.use(tenantMiddleware);
 router.use(requireModule('expenses'));
 
 router.get('/', listExpenses);
-router.post('/', requireRole(['admin', 'manager', 'cashier']), createExpense);
+router.post('/', requireRole(['admin', 'manager', 'sales']), createExpense);
 router.delete('/:id', requireRole(['admin', 'manager']), deleteExpense);
 
 export default router;

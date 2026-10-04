@@ -36,6 +36,18 @@
 | Internal stack traces could reach development clients | Medium | Error handler included stacks | Client responses no longer include stack traces |
 | Sidebar links silently returned to dashboard | Medium | Missing SPA routes for SaaS/agency pages | Removed unsupported links |
 
+## Audit of 2026-10-04
+
+| Bug | Severity | Root cause | Fix | Regression test |
+| --- | --- | --- | --- | --- |
+| Approval rules on invoice amount never fired | High | `createInvoice` evaluated business rules without `invoiceSubtotal`, so `invoiceSubtotal > N` compared against 0 (only the preview endpoint passed it) | Totals are calculated first and the subtotal is passed to the rule engine | `test:approvals` |
+| Invoices held for approval could never be approved from the UI | High | Nothing created an `ApprovalQueue` entry; the queue page was always empty and the invoice page has no approve action | `createInvoice` queues held invoices in the same transaction as the invoice; moving or cancelling a held invoice outside the queue closes its entry transactionally | `test:approvals` |
+| Sales staff got 403 on returns, expenses and stock adjustments | Medium | Routes allowed a `cashier` role that does not exist (roles are admin/manager/accountant/sales/viewer) | Routes allow `sales` | `test:approvals` |
+| Concurrent refunds of one payment all succeeded | Medium | Refundable balance was checked in memory, then saved | Atomic conditional claim plus invoice and balance updates in one transaction; losers get 409 | `test:approvals` (3 parallel refunds, 1 applied; injected failure rolls back) |
+| Docker Compose MongoDB could not run sales, payments or returns | High (local setup) | Standalone `mongod`; transactions need a replica set | Compose runs and initiates a single-node replica set; unused Redis service removed | Verified locally: transaction fails on old compose, succeeds on new |
+| CI ran 1 of 8 test suites | Low | Workflow only ran the calculator test | CI runs every backend suite | CI |
+| Moderate advisories in morgan, multer, qs | Low | Outdated patch versions | `npm audit fix` (no major upgrades); `npm audit --omit=dev` reports 0 | Full suite re-run |
+
 ## Security
 
 - Authentication: JWT bearer tokens with bcrypt password hashes.
@@ -73,8 +85,9 @@ Mongoose schemas model organizations, memberships, users, invoices, payments, pr
 
 ## Remaining Work
 
-1. Implement SPA pages and browser E2E coverage for SaaS plans/subscriptions/usage and agency projects/timesheets/retainers; the API exists but the end-user flow does not.
+1. Add browser E2E coverage for the SaaS (plans/subscriptions) and agency (projects/timesheets/retainers) pages, which now exist in the SPA.
 2. Configure and run browser E2E against a real development stack with stable seeded fixtures.
 3. Replace local-storage bearer tokens and in-memory rate limiting for a hardened horizontally scaled deployment.
 4. Resolve the workstation's locked generated `dist` files, then run the complete workspace build. Split the frontend bundle to remove the Vite size warning.
-5. Add a supported ESLint flat configuration and dependencies; the existing lint script cannot run because no ESLint configuration exists.
+5. Add a supported ESLint flat configuration and dependencies (the broken backend `lint` script, which had no ESLint installed, was removed).
+6. Re-run business rules when a draft invoice is edited, and apply `apply_discount` / `add_surcharge` rule effects to totals (currently reported only).

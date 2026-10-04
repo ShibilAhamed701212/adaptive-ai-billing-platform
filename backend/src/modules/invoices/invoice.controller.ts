@@ -4,6 +4,7 @@ import { CustomerModel } from '../../models/Customer.model';
 import { OrganizationModel } from '../../models/Organization.model';
 import { CustomFieldModel } from '../../models/CustomField.model';
 import { BusinessRuleModel } from '../../models/BusinessRule.model';
+import { ApprovalQueueModel } from '../../models/ApprovalQueue.model';
 import { calculateInvoice } from '../../billing-engine/calculators/invoice-calculator';
 import { validateCustomFields } from '../../dynamic-engine/custom-fields/field-validator';
 import { evaluateBusinessRules } from '../../dynamic-engine/rules/rule-evaluator';
@@ -44,6 +45,41 @@ const ALLOWED_STATUS_TRANSITIONS: Record<string, string[]> = {
   void: [],
   cancelled: [],
 };
+
+/**
+ * Save an invoice status change in one transaction with its side effects: when the invoice leaves
+ * pending_approval outside the Approval Queue (status endpoint, cancel) its open queue entry is
+ * closed, and the customer's outstanding balance is adjusted by `balanceDelta`.
+ */
+async function applyStatusChange(req: Request, invoice: any, previousStatus: string, balanceDelta: number): Promise<void> {
+  const orgId = new mongoose.Types.ObjectId(req.tenant!.organizationId);
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      await invoice.save({ session });
+      if (previousStatus === 'pending_approval') {
+        await ApprovalQueueModel.updateMany(
+          { organizationId: orgId, entityType: 'invoice', entityId: invoice._id, status: 'pending' },
+          {
+            $set: {
+              status: invoice.status === 'approved' ? 'approved' : 'rejected',
+              reviewedBy: new mongoose.Types.ObjectId(req.tenant!.userId),
+              reviewedByEmail: req.tenant!.email,
+              reviewedAt: new Date(),
+              reviewNotes: `Invoice moved to '${invoice.status}' outside the approval queue`,
+            },
+          },
+          { session }
+        );
+      }
+      if (balanceDelta !== 0) {
+        await CustomerModel.updateOne({ _id: invoice.customerId, organizationId: orgId }, { $inc: { outstandingBalance: balanceDelta } }, { session });
+      }
+    });
+  } finally {
+    await session.endSession();
+  }
+}
 
 export async function listInvoices(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -218,21 +254,23 @@ export async function createInvoice(req: Request, res: Response, next: NextFunct
       return;
     }
 
-    // Evaluate business rules
-    const rules = await BusinessRuleModel.find({ organizationId: orgId, isActive: true }).lean();
-    const ruleEffects = evaluateBusinessRules(rules, 'beforeInvoiceCalculate', {
-      customerId: String(customer._id),
-      customerState: customer.billingAddress?.state,
-      itemCount: items.length,
-      customFields,
-    });
-
     // Run deterministic calculation engine
     const { items: processedItems, totals } = calculateInvoice(items, {
       taxSystem: org.settings.taxSystem,
       originState: org.settings.address?.state,
       destinationState: customer.billingAddress?.state,
       invoiceDiscountAmount: Number(invoiceDiscountAmount) || 0,
+    });
+
+    // Evaluate business rules. The subtotal must be supplied, otherwise rules such as
+    // "invoiceSubtotal greater_than 50000 -> require_approval" evaluate against 0 and never fire.
+    const rules = await BusinessRuleModel.find({ organizationId: orgId, isActive: true }).lean();
+    const ruleEffects = evaluateBusinessRules(rules, 'beforeInvoiceCalculate', {
+      invoiceSubtotal: totals.rawSubtotal,
+      customerId: String(customer._id),
+      customerState: customer.billingAddress?.state,
+      itemCount: items.length,
+      customFields,
     });
 
     // Generate unique sequential invoice number atomically (BUG-04 regression guard)
@@ -255,45 +293,70 @@ export async function createInvoice(req: Request, res: Response, next: NextFunct
       aiRiskExplanation = 'High-value transaction';
     }
 
-    // Create Invoice with snapshots
-    const invoice = await InvoiceModel.create({
-      organizationId: new mongoose.Types.ObjectId(orgId),
-      invoiceNumber,
-      customerId: customer._id,
-      customerSnapshot: {
-        name: customer.name,
-        email: customer.email,
-        phone: customer.phone,
-        companyName: customer.companyName,
-        gstinOrTaxId: customer.gstinOrTaxId,
-        billingAddress: customer.billingAddress,
-      },
-      issueDate: issueDate || new Date().toISOString().split('T')[0],
-      dueDate: dueDate || new Date(Date.now() + (org.settings.paymentTermsDays || 30) * 86400000).toISOString().split('T')[0],
-      currency: org.settings.currency || 'INR',
-      currencySymbol: org.settings.currencySymbol || '₹',
-      items: processedItems,
-      subtotal: totals.rawSubtotal,
-      discountTotal: totals.totalDiscount,
-      taxTotal: totals.taxTotal,
-      taxBreakdown: totals.taxBreakdown,
-      grandTotal: totals.grandTotal,
-      amountPaid: 0,
-      amountDue: totals.grandTotal,
-      status: initialStatus,
-      notes,
-      terms: terms || `Payment due within ${org.settings.paymentTermsDays || 30} days of invoice date.`,
-      customFields: { ...(customFields || {}), ...(ruleEffects.injectedFields || {}) },
-      aiRiskScore,
-      aiRiskExplanation,
-      createdBy: new mongoose.Types.ObjectId(userId),
-    });
+    // Create the invoice, its approval request and the receivable together: a failure part-way
+    // must not leave a held invoice with no queue entry, or a receivable without its balance.
+    const session = await mongoose.startSession();
+    let invoice: any;
+    try {
+      await session.withTransaction(async () => {
+        [invoice] = await InvoiceModel.create([{
+          organizationId: new mongoose.Types.ObjectId(orgId),
+          invoiceNumber,
+          customerId: customer._id,
+          customerSnapshot: {
+            name: customer.name,
+            email: customer.email,
+            phone: customer.phone,
+            companyName: customer.companyName,
+            gstinOrTaxId: customer.gstinOrTaxId,
+            billingAddress: customer.billingAddress,
+          },
+          issueDate: issueDate || new Date().toISOString().split('T')[0],
+          dueDate: dueDate || new Date(Date.now() + (org.settings.paymentTermsDays || 30) * 86400000).toISOString().split('T')[0],
+          currency: org.settings.currency || 'INR',
+          currencySymbol: org.settings.currencySymbol || '₹',
+          items: processedItems,
+          subtotal: totals.rawSubtotal,
+          discountTotal: totals.totalDiscount,
+          taxTotal: totals.taxTotal,
+          taxBreakdown: totals.taxBreakdown,
+          grandTotal: totals.grandTotal,
+          amountPaid: 0,
+          amountDue: totals.grandTotal,
+          status: initialStatus,
+          notes,
+          terms: terms || `Payment due within ${org.settings.paymentTermsDays || 30} days of invoice date.`,
+          customFields: { ...(customFields || {}), ...(ruleEffects.injectedFields || {}) },
+          aiRiskScore,
+          aiRiskExplanation,
+          createdBy: new mongoose.Types.ObjectId(userId),
+        }], { session });
 
-    // Update customer outstanding balance if sent or approved
-    if (initialStatus === 'sent' || initialStatus === 'approved') {
-      await CustomerModel.findByIdAndUpdate(customer._id, {
-        $inc: { outstandingBalance: totals.grandTotal },
+        // Queue the invoice for manager review; without a queue entry it would sit in
+        // pending_approval with nothing in the Approval Queue to approve or reject it.
+        if (initialStatus === 'pending_approval') {
+          await ApprovalQueueModel.create([{
+            organizationId: new mongoose.Types.ObjectId(orgId),
+            entityType: 'invoice',
+            entityId: invoice._id,
+            requestedBy: new mongoose.Types.ObjectId(userId),
+            requestedByEmail: req.tenant!.email,
+            reason: ruleEffects.approvalReason || 'Business rule requires manager approval',
+            details: { invoiceNumber, grandTotal: totals.grandTotal, customerName: customer.name },
+          }], { session });
+        }
+
+        // Update customer outstanding balance if sent or approved
+        if (initialStatus === 'sent' || initialStatus === 'approved') {
+          await CustomerModel.updateOne(
+            { _id: customer._id },
+            { $inc: { outstandingBalance: totals.grandTotal } },
+            { session }
+          );
+        }
       });
+    } finally {
+      await session.endSession();
     }
 
     await logAuditEvent({
@@ -371,16 +434,10 @@ export async function updateInvoiceStatus(req: Request, res: Response, next: Nex
       return;
     }
 
+    // Status, approval request and customer balance move together.
     invoice.status = status;
-    await invoice.save();
-
-    // Reconcile customer outstanding balance on any receivable-affecting transition.
     const delta = statusDelta(previousStatus, status, invoice.amountDue);
-    if (delta !== 0) {
-      await CustomerModel.findByIdAndUpdate(invoice.customerId, {
-        $inc: { outstandingBalance: delta },
-      });
-    }
+    await applyStatusChange(req, invoice, previousStatus, delta);
 
     await logAuditEvent({
       organizationId: orgId,
@@ -494,15 +551,9 @@ export async function deleteInvoice(req: Request, res: Response, next: NextFunct
 
     const previousStatus = invoice.status;
     invoice.status = 'cancelled';
-    await invoice.save();
-
     // Deduct balance from customer for any receivable-counted status (BUG-03 pattern).
     const delta = statusDelta(previousStatus, 'cancelled', invoice.amountDue);
-    if (delta !== 0) {
-      await CustomerModel.findByIdAndUpdate(invoice.customerId, {
-        $inc: { outstandingBalance: delta },
-      });
-    }
+    await applyStatusChange(req, invoice, previousStatus, delta);
 
     await logAuditEvent({
       organizationId: orgId,

@@ -34,3 +34,15 @@ jobs:
 
       - name: Run Backend Unit Tests
         run: npm test --workspace=backend
+
+      # API and money-flow suites run against a throwaway in-memory MongoDB (mongodb-memory-server).
+      - name: Run Backend API & Integration Suites
+        working-directory: backend
+        run: |
+          npm run test:auth
+          npm run test:hardening
+          npm run test:approvals
+          npm run test:integration
+          npm run test:pos
+          npm run test:saas
+          npm run test:audit
