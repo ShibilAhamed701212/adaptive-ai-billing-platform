@@ -8,6 +8,8 @@ export interface IInvoiceDoc extends Document, Omit<IInvoiceData, '_id' | 'organ
   createdBy: mongoose.Types.ObjectId;
   loyaltyPointsRedeemed?: number;
   loyaltyDiscountAmount?: number;
+  /** Invoice-level discount the user entered (excludes line and business-rule discounts). */
+  invoiceDiscountAmount?: number;
   customerLoyaltyPointsBalance?: number;
 }
 
@@ -66,6 +68,7 @@ const InvoiceSchema = new Schema<IInvoiceDoc>(
     items: [InvoiceItemSchema],
     subtotal: { type: Number, required: true },
     discountTotal: { type: Number, default: 0 },
+    invoiceDiscountAmount: { type: Number },
     taxTotal: { type: Number, default: 0 },
     taxBreakdown: [TaxBreakdownSchema],
     grandTotal: { type: Number, required: true },

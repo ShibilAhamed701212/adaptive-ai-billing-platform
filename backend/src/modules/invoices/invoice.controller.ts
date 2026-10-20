@@ -5,9 +5,9 @@ import { OrganizationModel } from '../../models/Organization.model';
 import { CustomFieldModel } from '../../models/CustomField.model';
 import { BusinessRuleModel } from '../../models/BusinessRule.model';
 import { ApprovalQueueModel } from '../../models/ApprovalQueue.model';
-import { calculateInvoice } from '../../billing-engine/calculators/invoice-calculator';
 import { validateCustomFields } from '../../dynamic-engine/custom-fields/field-validator';
 import { evaluateBusinessRules } from '../../dynamic-engine/rules/rule-evaluator';
+import { priceInvoiceWithRules, withoutRuleSurcharge } from '../../dynamic-engine/rules/rule-pricing';
 import { logAuditEvent } from '../../core/audit/audit.service';
 import mongoose from 'mongoose';
 import { generateInvoicePdf } from './invoice.pdf';
@@ -33,6 +33,12 @@ function statusDelta(previous: string, next: string, amountDue: number): number 
   return will ? amountDue : -amountDue;
 }
 
+/** Invoice-level discount of an invoice saved before `invoiceDiscountAmount` was stored. */
+function legacyInvoiceDiscount(invoice: any): number {
+  const lineDiscounts = (invoice.items || []).reduce((sum: number, item: any) => sum + (Number(item.discountAmount) || 0), 0);
+  return Math.max(0, Math.round(((Number(invoice.discountTotal) || 0) - lineDiscounts) * 100) / 100);
+}
+
 /** Legal invoice status transitions ('paid' is only reached via payment records). */
 const ALLOWED_STATUS_TRANSITIONS: Record<string, string[]> = {
   draft: ['pending_approval', 'approved', 'sent', 'void', 'cancelled'],
@@ -49,9 +55,16 @@ const ALLOWED_STATUS_TRANSITIONS: Record<string, string[]> = {
 /**
  * Save an invoice status change in one transaction with its side effects: when the invoice leaves
  * pending_approval outside the Approval Queue (status endpoint, cancel) its open queue entry is
- * closed, and the customer's outstanding balance is adjusted by `balanceDelta`.
+ * closed, an approval request is opened when `approvalReason` is given, and the customer's
+ * outstanding balance is adjusted by `balanceDelta`.
  */
-async function applyStatusChange(req: Request, invoice: any, previousStatus: string, balanceDelta: number): Promise<void> {
+async function applyStatusChange(
+  req: Request,
+  invoice: any,
+  previousStatus: string,
+  balanceDelta: number,
+  approvalReason?: string
+): Promise<void> {
   const orgId = new mongoose.Types.ObjectId(req.tenant!.organizationId);
   const session = await mongoose.startSession();
   try {
@@ -71,6 +84,17 @@ async function applyStatusChange(req: Request, invoice: any, previousStatus: str
           },
           { session }
         );
+      }
+      if (approvalReason) {
+        await ApprovalQueueModel.create([{
+          organizationId: orgId,
+          entityType: 'invoice',
+          entityId: invoice._id,
+          requestedBy: new mongoose.Types.ObjectId(req.tenant!.userId),
+          requestedByEmail: req.tenant!.email,
+          reason: approvalReason,
+          details: { invoiceNumber: invoice.invoiceNumber, grandTotal: invoice.grandTotal, customerName: invoice.customerSnapshot?.name },
+        }], { session });
       }
       if (balanceDelta !== 0) {
         await CustomerModel.updateOne({ _id: invoice.customerId, organizationId: orgId }, { $inc: { outstandingBalance: balanceDelta } }, { session });
@@ -162,32 +186,21 @@ export async function calculatePreview(req: Request, res: Response, next: NextFu
       customerState = customer?.billingAddress?.state;
     }
 
-    // Evaluate dynamic rules
+    // Price with the business rules applied, exactly as createInvoice will.
     const rules = await BusinessRuleModel.find({ organizationId: orgId, isActive: true }).lean();
-    const rawSubtotalEstimate = (items || []).reduce(
-      (acc: number, item: any) => acc + (Number(item.quantity) || 1) * (Number(item.unitPrice) || 0),
-      0
-    );
-
-    const ruleEffects = evaluateBusinessRules(rules, 'beforeInvoiceCalculate', {
-      invoiceSubtotal: rawSubtotalEstimate,
-      customerState,
-      itemCount: items?.length || 0,
-      customFields: req.body.customFields,
-    });
-
-    const calculation = calculateInvoice(items || [], {
+    const priced = priceInvoiceWithRules(rules, items || [], {
       taxSystem: org.settings.taxSystem,
       originState: org.settings.address?.state,
       destinationState: customerState,
       invoiceDiscountAmount: Number(invoiceDiscountAmount) || 0,
-    });
+    }, { customerId, customerState, customFields: req.body.customFields });
 
     res.json({
       success: true,
       data: {
-        ...calculation,
-        ruleEffects,
+        items: priced.items,
+        totals: priced.totals,
+        ruleEffects: priced.ruleEffects,
       },
     });
   } catch (err) {
@@ -254,24 +267,16 @@ export async function createInvoice(req: Request, res: Response, next: NextFunct
       return;
     }
 
-    // Run deterministic calculation engine
-    const { items: processedItems, totals } = calculateInvoice(items, {
+    // Run the deterministic calculation engine with business rules applied. Rules see the
+    // subtotal (otherwise "invoiceSubtotal greater_than 50000 -> require_approval" never fires),
+    // and their discount/surcharge actions change what the customer is charged.
+    const rules = await BusinessRuleModel.find({ organizationId: orgId, isActive: true }).lean();
+    const { items: processedItems, totals, ruleEffects, manualInvoiceDiscount } = priceInvoiceWithRules(rules, items, {
       taxSystem: org.settings.taxSystem,
       originState: org.settings.address?.state,
       destinationState: customer.billingAddress?.state,
       invoiceDiscountAmount: Number(invoiceDiscountAmount) || 0,
-    });
-
-    // Evaluate business rules. The subtotal must be supplied, otherwise rules such as
-    // "invoiceSubtotal greater_than 50000 -> require_approval" evaluate against 0 and never fire.
-    const rules = await BusinessRuleModel.find({ organizationId: orgId, isActive: true }).lean();
-    const ruleEffects = evaluateBusinessRules(rules, 'beforeInvoiceCalculate', {
-      invoiceSubtotal: totals.rawSubtotal,
-      customerId: String(customer._id),
-      customerState: customer.billingAddress?.state,
-      itemCount: items.length,
-      customFields,
-    });
+    }, { customerId: String(customer._id), customerState: customer.billingAddress?.state, customFields });
 
     // Generate unique sequential invoice number atomically (BUG-04 regression guard)
     const { invoiceNumber } = await reserveInvoiceNumber(orgId);
@@ -318,6 +323,7 @@ export async function createInvoice(req: Request, res: Response, next: NextFunct
           items: processedItems,
           subtotal: totals.rawSubtotal,
           discountTotal: totals.totalDiscount,
+          invoiceDiscountAmount: manualInvoiceDiscount,
           taxTotal: totals.taxTotal,
           taxBreakdown: totals.taxBreakdown,
           grandTotal: totals.grandTotal,
@@ -434,6 +440,36 @@ export async function updateInvoiceStatus(req: Request, res: Response, next: Nex
       return;
     }
 
+    // A draft that a business rule says needs manager approval cannot be sent or approved
+    // directly (it may have been created small and edited up): hold it in the Approval Queue,
+    // as createInvoice does.
+    if (previousStatus === 'draft' && (status === 'sent' || status === 'approved')) {
+      const rules = await BusinessRuleModel.find({ organizationId: orgId, isActive: true }).lean();
+      const ownItems = withoutRuleSurcharge(invoice.items as any[]);
+      const ruleEffects = evaluateBusinessRules(rules, 'beforeInvoiceCalculate', {
+        invoiceSubtotal: ownItems.reduce((sum, item: any) => sum + (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0), 0),
+        customerId: invoice.customerId ? String(invoice.customerId) : undefined,
+        customerState: invoice.customerSnapshot?.billingAddress?.state,
+        itemCount: ownItems.length,
+        customFields: invoice.customFields,
+      });
+      if (ruleEffects.requireApproval) {
+        invoice.status = 'pending_approval';
+        await applyStatusChange(req, invoice, previousStatus, 0, ruleEffects.approvalReason || 'Business rule requires manager approval');
+        await logAuditEvent({
+          organizationId: orgId,
+          userId: req.tenant!.userId,
+          userEmail: req.tenant!.email,
+          action: 'UPDATE_INVOICE_STATUS',
+          entityType: 'Invoice',
+          entityId: String(invoice._id),
+          details: { from: previousStatus, to: 'pending_approval', requested: status, invoiceNumber: invoice.invoiceNumber },
+        });
+        res.json({ success: true, data: invoice, ruleEffects: ruleEffects.appliedRules });
+        return;
+      }
+    }
+
     // Status, approval request and customer balance move together.
     invoice.status = status;
     const delta = statusDelta(previousStatus, status, invoice.amountDue);
@@ -485,18 +521,28 @@ export async function updateInvoice(req: Request, res: Response, next: NextFunct
       return;
     }
 
-    // Recompute deterministic totals if items or discounts changed
-    const itemsToProcess = items || invoice.items;
-    const { items: processedItems, totals } = calculateInvoice(itemsToProcess, {
+    // Recompute totals and re-run the business rules on every draft edit. The invoice-level
+    // discount the user asked for is stored on its own: `discountTotal` also contains line and rule
+    // discounts, and feeding it back in as the invoice discount would discount the draft again.
+    const itemsToProcess = items || withoutRuleSurcharge(invoice.items.map((item: any) => item.toObject?.() ?? item));
+    const storedInvoiceDiscount = invoice.invoiceDiscountAmount ?? legacyInvoiceDiscount(invoice);
+    const mergedCustomFields = customFields ? { ...(invoice.customFields || {}), ...customFields } : invoice.customFields;
+    const rules = await BusinessRuleModel.find({ organizationId: orgId, isActive: true }).lean();
+    const { items: processedItems, totals, ruleEffects, manualInvoiceDiscount } = priceInvoiceWithRules(rules, itemsToProcess, {
       taxSystem: org.settings.taxSystem,
       originState: org.settings.address?.state,
       destinationState: invoice.customerSnapshot?.billingAddress?.state,
-      invoiceDiscountAmount: invoiceDiscountAmount !== undefined ? Number(invoiceDiscountAmount) : invoice.discountTotal,
+      invoiceDiscountAmount: invoiceDiscountAmount !== undefined ? Number(invoiceDiscountAmount) : storedInvoiceDiscount,
+    }, {
+      customerId: invoice.customerId ? String(invoice.customerId) : undefined,
+      customerState: invoice.customerSnapshot?.billingAddress?.state,
+      customFields: mergedCustomFields,
     });
 
-    invoice.items = processedItems;
+    invoice.items = processedItems as any;
     invoice.subtotal = totals.rawSubtotal;
     invoice.discountTotal = totals.totalDiscount;
+    invoice.invoiceDiscountAmount = manualInvoiceDiscount;
     invoice.taxTotal = totals.taxTotal;
     invoice.taxBreakdown = totals.taxBreakdown;
     invoice.grandTotal = totals.grandTotal;
@@ -506,7 +552,7 @@ export async function updateInvoice(req: Request, res: Response, next: NextFunct
     if (dueDate) invoice.dueDate = dueDate;
     if (notes !== undefined) invoice.notes = notes;
     if (terms !== undefined) invoice.terms = terms;
-    if (customFields) invoice.customFields = { ...(invoice.customFields || {}), ...customFields };
+    invoice.customFields = { ...(mergedCustomFields || {}), ...(ruleEffects.injectedFields || {}) };
 
     await invoice.save();
 
@@ -520,7 +566,7 @@ export async function updateInvoice(req: Request, res: Response, next: NextFunct
       details: { invoiceNumber: invoice.invoiceNumber, grandTotal: invoice.grandTotal },
     });
 
-    res.json({ success: true, data: invoice });
+    res.json({ success: true, data: invoice, ruleEffects: ruleEffects.appliedRules });
   } catch (err) {
     next(err);
   }
