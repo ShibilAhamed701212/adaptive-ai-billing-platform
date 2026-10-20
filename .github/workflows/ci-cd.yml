@@ -42,6 +42,7 @@ jobs:
           npm run test:auth
           npm run test:hardening
           npm run test:approvals
+          npm run test:rules
           npm run test:integration
           npm run test:pos
           npm run test:saas
