@@ -26,7 +26,7 @@ All of the following exist in the code and are exercised by the backend test sui
 **Billing**
 - Invoice engine with line discounts, invoice discounts, GST (CGST/SGST vs IGST by state) or VAT, pricing tiers and atomic sequential invoice numbers.
 - Invoice status state machine, payments with overpayment and concurrency guards, partial/cumulative refunds, credit notes, recurring invoice profiles (hourly cron, each period claimed atomically), invoice templates, PDF download (pdfkit) and email (nodemailer).
-- Custom fields and business rules per organization (for example "invoice subtotal over 50,000 requires approval"); invoices held by a rule go to the **Approval Queue** for a manager to approve or reject.
+- Custom fields and business rules per organization (for example "invoice subtotal over 50,000 requires approval"); invoices held by a rule go to the **Approval Queue** for a manager to approve or reject. Discount and surcharge rules are priced into the invoice (preview, create and every draft edit), and a draft edited past an approval rule is held when it is sent.
 
 **Retail / POS**
 - Barcode-aware POS checkout in a MongoDB transaction (stock, split payments, store credit, loyalty, customer credit "udhaar"), server-side price enforcement, held bills, offline queue in IndexedDB with idempotent replay, thermal receipt printing via the browser.
@@ -195,7 +195,8 @@ npm run test:all --workspace=backend       # every backend suite below
 | `test` | invoice calculator, tax and pricing tiers |
 | `test:auth` | membership revocation invalidates sessions |
 | `test:hardening` | production config, CSRF, password reset, rate limits, approvals, AI input limits |
-| `test:approvals` | rule-held invoices reach the approval queue, sales-role permissions, concurrent refunds |
+| `test:approvals` | rule-held invoices reach the approval queue, sales-role permissions, concurrent refunds and sandbox checkouts |
+| `test:rules` | discount and surcharge rules priced into invoices, draft edits re-priced without double discounting, drafts held for approval on send |
 | `test:integration` | 11 POS/inventory/shift/return scenarios, tenant isolation, rollback |
 | `test:pos` | atomic POS sale and overselling |
 | `test:saas` | multi-tenant SaaS flow, invitations, recurring runs (29 checks) |
@@ -236,9 +237,6 @@ Notes:
 ## Known limitations
 
 - The Stripe payment provider is a stub; only the sandbox test checkout records payments. There is no payment-gateway webhook flow.
-- Business rules are evaluated when an invoice is created. Editing a draft afterwards does not re-run them.
-- Only `require_approval` and `set_field` rule actions change the saved invoice; `apply_discount` and `add_surcharge` are reported in `ruleEffects` but not applied to totals.
-- The sandbox test checkout updates the invoice with read-modify-write outside a transaction, so it can race a concurrent payment on the same invoice.
 - The session lasts 7 days with no refresh-token rotation; logout clears the cookie but does not revoke the token server-side (password changes and membership changes do).
 - The frontend bundle is a single ~850 kB chunk (Vite warns); no ESLint configuration is present.
 - `npm audit` reports high-severity advisories in Tailwind CSS 3's build-time file watcher chain (`braces`/`micromatch`); fixing them requires Tailwind 4. Production dependencies report no known vulnerabilities.

@@ -148,6 +148,18 @@ async function run() {
     assert.equal(invoiceAfter!.status, 'paid', 'invoice unchanged');
     console.log('✅ Refund claim, invoice and balance are written atomically');
 
+    // Concurrent sandbox checkouts of one invoice settle it once.
+    const third = await admin.post('/api/v1/invoices').send({ customerId, status: 'sent', items: [{ description: 'Third order', quantity: 1, unitPrice: 400 }] }).expect(201);
+    const balanceBeforeCheckout = (await CustomerModel.findById(customerId).lean())!.outstandingBalance;
+    const checkouts = await Promise.all([1, 2, 3].map(() => admin.post('/api/v1/payments/test-checkout').send({ invoiceId: third.body.data._id })));
+    assert.equal(checkouts.filter((r) => r.status === 200).length, 1, `exactly one checkout succeeds (statuses: ${checkouts.map((r) => r.status).join(',')})`);
+    const thirdAfter = await InvoiceModel.findById(third.body.data._id).lean();
+    assert.equal(thirdAfter!.amountPaid, 400, 'invoice paid once');
+    assert.equal(thirdAfter!.status, 'paid');
+    assert.equal(await PaymentModel.countDocuments({ invoiceId: third.body.data._id }), 1, 'losing checkouts leave no payment');
+    assert.equal(balanceBeforeCheckout - (await CustomerModel.findById(customerId).lean())!.outstandingBalance, 400, 'balance reduced once');
+    console.log('✅ Concurrent sandbox checkouts of one invoice settle it once');
+
     console.log('\nAPPROVAL/ROLE/REFUND TESTS PASSED');
   } finally {
     await mongoose.disconnect();

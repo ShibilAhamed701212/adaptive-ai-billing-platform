@@ -5,6 +5,59 @@ import { CustomerModel } from '../../models/Customer.model';
 import { logAuditEvent } from '../../core/audit/audit.service';
 import mongoose from 'mongoose';
 
+const PAYABLE_INVOICE_STATUSES = ['approved', 'sent', 'partially_paid', 'overdue'];
+
+/**
+ * Atomically apply a completed payment to its invoice. The conditional filter re-checks the
+ * status and outstanding due server-side at write time, so two concurrent payments can never
+ * both pass an earlier in-memory guard and double-settle the same invoice. Returns null when
+ * the invoice is no longer payable for this amount.
+ */
+function settleInvoice(invoiceId: any, paymentAmount: number, payment: any, session?: mongoose.ClientSession) {
+  return InvoiceModel.findOneAndUpdate(
+    {
+      _id: invoiceId,
+      status: { $in: PAYABLE_INVOICE_STATUSES },
+      amountDue: { $gte: paymentAmount },
+    },
+    [
+      {
+        $set: {
+          amountPaid: { $round: [{ $add: ['$amountPaid', paymentAmount] }, 2] },
+          amountDue: {
+            $round: [
+              { $max: [0, { $subtract: ['$grandTotal', { $add: ['$amountPaid', paymentAmount] }] }] },
+              2,
+            ],
+          },
+          status: {
+            $cond: [
+              { $lte: [{ $subtract: ['$grandTotal', { $add: ['$amountPaid', paymentAmount] }] }, 0] },
+              'paid',
+              'partially_paid',
+            ],
+          },
+          paymentHistory: {
+            $concatArrays: [
+              { $ifNull: ['$paymentHistory', []] },
+              [
+                {
+                  paymentId: payment._id,
+                  amount: paymentAmount,
+                  paymentDate: payment.paymentDate,
+                  method: payment.paymentMethod,
+                  reference: payment.transactionReference,
+                },
+              ],
+            ],
+          },
+        },
+      },
+    ],
+    { new: true, session }
+  );
+}
+
 export async function listPayments(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const orgId = req.tenant!.organizationId;
@@ -151,47 +204,7 @@ export async function recordPayment(req: Request, res: Response, next: NextFunct
       // Atomic settle (concurrency guard): the conditional filter re-checks the
       // outstanding due SERVER-SIDE at write time, so two concurrent payments can never
       // both pass the earlier in-memory guard and double-settle the same invoice.
-      const updated = await InvoiceModel.findOneAndUpdate(
-        {
-          _id: invoice._id,
-          amountDue: { $gte: paymentAmount },
-        },
-        [
-          {
-            $set: {
-              amountPaid: { $round: [{ $add: ['$amountPaid', paymentAmount] }, 2] },
-              amountDue: {
-                $round: [
-                  { $max: [0, { $subtract: ['$grandTotal', { $add: ['$amountPaid', paymentAmount] }] }] },
-                  2,
-                ],
-              },
-          status: {
-            $cond: [
-              { $lte: [{ $subtract: ['$grandTotal', { $add: ['$amountPaid', paymentAmount] }] }, 0] },
-              'paid',
-              'partially_paid',
-            ],
-          },
-          paymentHistory: {
-            $concatArrays: [
-              { $ifNull: ['$paymentHistory', []] },
-              [
-                {
-                  paymentId: payment._id,
-                  amount: paymentAmount,
-                  paymentDate: payment.paymentDate,
-                  method: payment.paymentMethod,
-                  reference: payment.transactionReference,
-                },
-              ],
-            ],
-          },
-        },
-      },
-    ],
-    { new: true }
-  );
+      const updated = await settleInvoice(invoice._id, paymentAmount, payment);
 
       if (!updated) {
         // Lost the race: another concurrent payment consumed the outstanding due.
@@ -483,41 +496,51 @@ export async function testCheckout(req: Request, res: Response, next: NextFuncti
       };
       const paymentMethod = PROVIDER_METHOD_MAP[paymentProvider.getProviderName()] || 'other';
 
-      const payment = await PaymentModel.create({
-        organizationId: new mongoose.Types.ObjectId(orgId),
-        invoiceId: invoice._id,
-        customerId: invoice.customerId,
-        amount: paymentAmount,
-        currency: invoice.currency,
-        paymentDate: new Date().toISOString().split('T')[0],
-        paymentMethod,
-        transactionReference: intent.id,
-        status: 'completed',
-        idempotencyKey,
-        notes: `${paymentProvider.getProviderName()} Payment Processed`,
-      });
+      // Record the payment, settle the invoice and reduce the customer balance together, with the
+      // same server-side guard as recordPayment: a concurrent payment that already settled the
+      // invoice makes this one fail cleanly instead of overpaying it.
+      let payment: any;
+      let settled: any = null;
+      const session = await mongoose.startSession();
+      try {
+        await session.withTransaction(async () => {
+          [payment] = await PaymentModel.create([{
+            organizationId: new mongoose.Types.ObjectId(orgId),
+            invoiceId: invoice._id,
+            customerId: invoice.customerId,
+            amount: paymentAmount,
+            currency: invoice.currency,
+            paymentDate: new Date().toISOString().split('T')[0],
+            paymentMethod,
+            transactionReference: intent.id,
+            status: 'completed',
+            idempotencyKey,
+            notes: `${paymentProvider.getProviderName()} Payment Processed`,
+          }], { session });
 
-      const updatedPaid = Math.round((invoice.amountPaid + paymentAmount) * 100) / 100;
-      const updatedDue = Math.max(0, Math.round((invoice.grandTotal - updatedPaid) * 100) / 100);
-      const newStatus = updatedDue === 0 ? 'paid' : 'partially_paid';
-
-      invoice.amountPaid = updatedPaid;
-      invoice.amountDue = updatedDue;
-      invoice.status = newStatus;
-      if (!invoice.paymentHistory) invoice.paymentHistory = [];
-      invoice.paymentHistory.push({
-        paymentId: String(payment._id),
-        amount: paymentAmount,
-        paymentDate: payment.paymentDate,
-        method: payment.paymentMethod,
-        reference: payment.transactionReference,
-      });
-      await invoice.save();
-
-      // Deduct from customer's outstanding balance
-      await CustomerModel.findByIdAndUpdate(invoice.customerId, {
-        $inc: { outstandingBalance: -paymentAmount },
-      });
+          settled = await settleInvoice(invoice._id, paymentAmount, payment, session);
+          if (!settled) {
+            throw Object.assign(new Error('Invoice was concurrently modified; payment not applied'), {
+              statusCode: 409,
+              code: 'CONCURRENT_PAYMENT_CONFLICT',
+            });
+          }
+          await CustomerModel.updateOne(
+            { _id: invoice.customerId, organizationId: new mongoose.Types.ObjectId(orgId) },
+            { $inc: { outstandingBalance: -paymentAmount } },
+            { session }
+          );
+        });
+      } catch (err: any) {
+        if (err?.code === 'CONCURRENT_PAYMENT_CONFLICT') {
+          res.status(409).json({ success: false, error: { code: err.code, message: err.message } });
+          return;
+        }
+        throw err;
+      } finally {
+        await session.endSession();
+      }
+      const newStatus = settled.status;
 
       res.status(200).json({
         success: true,
